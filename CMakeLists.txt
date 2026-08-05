@@ -2,9 +2,7 @@ cmake_minimum_required(VERSION 3.28)
 
 project(AmrAMReX VERSION 0.1.0 LANGUAGES CXX CUDA)
 
-# CRITICAL: Prevent CMake from injecting fatbinary rules globally
-set(CMAKE_CUDA_SEPARABLE_COMPILATION OFF)
-set(CMAKE_CUDA_RESOLVE_DEVICE_SYMBOLS OFF)
+
 
 # Output directories
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/lib)
@@ -27,8 +25,14 @@ set(AMReX_SPACEDIM 3 CACHE STRING "AMReX Space Dimension" FORCE)
 set(AMReX_CUDA ON CACHE BOOL "Enable CUDA in AMReX" FORCE)
 set(AMReX_GPU_BACKEND CUDA CACHE STRING "AMReX GPU Backend" FORCE)
 set(AMReX_ENABLE_TESTS OFF CACHE BOOL "Disable AMReX Tests" FORCE)
-set(AMReX_CUDA_RDC OFF CACHE BOOL "Disable RDC for pure Clang toolchain" FORCE)
 set(AMReX_SETUP_COMPILER_FLAGS OFF CACHE BOOL "Disable internal AMReX compiler flag setup" FORCE)
+
+# -!!!- CRITICAL: Prevent CMake from injecting fatbinary rules globally
+# This is necessary because CMake is too stupid to use fatbin correctly 
+# if not using an nvcc + xcomp split compilation setup
+set(CMAKE_CUDA_SEPARABLE_COMPILATION OFF)
+set(CMAKE_CUDA_RESOLVE_DEVICE_SYMBOLS OFF)
+set(AMReX_CUDA_RDC OFF CACHE BOOL "Disable RDC for pure Clang toolchain" FORCE)
 
 # Fetch AMReX
 include(FetchContent)
