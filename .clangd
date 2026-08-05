@@ -1,0 +1,14 @@
+CompileFlags:
+  CompilationDatabase: "build"
+
+---
+If:
+  PathMatch: .*\.hpp
+
+CompileFlags:
+  Add:
+    - "-x"
+    - "cuda"
+    - "--cuda-host-only"
+    - "-Wno-unknown-cuda-version"
+    - "-Wno-deprecated-attributes"
