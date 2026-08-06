@@ -13,4 +13,4 @@ add_executable(boxer-test ${SOURCES_BOXER_TEST} ${HEADERS_BOXERT_TEST})
 #     CUDA_RESOLVE_DEVICE_SYMBOLS ON
 # )
 
-target_link_libraries(boxer-test PRIVATE amrex)
+target_link_libraries(boxer-test PRIVATE amrex Boxer::boxer)

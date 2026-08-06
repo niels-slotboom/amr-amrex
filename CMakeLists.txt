@@ -44,4 +44,6 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(amrex)
 
+find_package(Boxer REQUIRED)
+
 add_subdirectory(src/boxer-test)

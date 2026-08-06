@@ -1,5 +1,5 @@
 #include "AMRContainer.hpp"
-// #include "Boxer.hpp"
+#include <Boxer/Boxer.hpp>
 
 int main(int argc, char* argv[]) { // Initialize AMReX (handles MPI setup, GPU device selection, etc.)
     amrex::Initialize(argc, argv);
@@ -49,7 +49,7 @@ int main(int argc, char* argv[]) { // Initialize AMReX (handles MPI setup, GPU d
 
         amrex::Print() << "Level 0 Min: " << min_val << " | Max: " << max_val << "\n";
 
-        // boxer::show(amr, ngrow);
+        boxer::show(amr, ngrow);
     }
     // Clean up resources
     amrex::Finalize();
