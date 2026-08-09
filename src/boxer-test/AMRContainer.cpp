@@ -102,7 +102,7 @@ void AMRContainer::ErrorEst(int lev, amrex::TagBoxArray& tags, amrex::Real time,
     FillPatch(lev, time);
 
     const int nvar_loc = nvar;
-    const amrex::Real threshold = 0.01;
+    const amrex::Real threshold = 0.1;
 
     // Iterate over grid patches on the GPU/CPU device
     for (amrex::MFIter mfi(tags); mfi.isValid(); ++mfi) {
@@ -111,7 +111,7 @@ void AMRContainer::ErrorEst(int lev, amrex::TagBoxArray& tags, amrex::Real time,
         const auto& arr = state[lev].array(mfi);
 
         amrex::ParallelFor(box, [=] AMREX_GPU_DEVICE(int i, int j, int k) noexcept {
-            amrex::Real max_grad_sq = 0.0;
+            amrex::Real max_eval_criterion = 0.0;
 
             // Estimate gradient squared across all variables
             for (int comp = 0; comp < nvar_loc; comp++) {
@@ -120,11 +120,12 @@ void AMRContainer::ErrorEst(int lev, amrex::TagBoxArray& tags, amrex::Real time,
                 amrex::Real dz = arr(i, j, k + 1, comp) - arr(i, j, k - 1, comp);
 
                 amrex::Real grad_sq = dx * dx + dy * dy + dz * dz;
-                max_grad_sq = amrex::max(max_grad_sq, grad_sq);
+                amrex::Real grad_normalised = std::sqrt(grad_sq) / (1 + std::abs(arr(i, j, k)));
+                max_eval_criterion = amrex::max(max_eval_criterion, grad_normalised);
             }
 
             // Mark cell for refinement if gradient exceeds error tolerance
-            if (max_grad_sq > threshold) {
+            if (max_eval_criterion > threshold) {
                 tags_arr(i, j, k) = amrex::TagBox::SET;
             }
         });
