@@ -1,17 +1,10 @@
 #pragma once
 
-#include <concepts>
-#include <ostream>
-#include <stdexcept>
-
 #include "AMReX.H"
 #include "AMReX_AmrCore.H"
-#include "AMReX_Box.H"
-#include "AMReX_FillPatchUtil.H"
 #include "AMReX_Interpolater.H"
-#include "AMReX_MFIter.H"
 #include "AMReX_MultiFab.H"
-#include "AMReX_MultiFabUtil.H"
+#include "AMReX_Parser.H"
 
 /**
  * @brief AMRContainer manages adaptive mesh refinement levels, field storage,
@@ -28,13 +21,14 @@ class AMRContainer : public amrex::AmrCore {
      * @param nvar      Number of state variables per grid cell.
      * @param ngrow     Number of ghost cells needed around valid patch data.
      */
-    AMRContainer(const amrex::Geometry& lev0_geom, const amrex::AmrInfo& amr_info, int nvar, int ngrow);
+    AMRContainer(const amrex::Geometry& lev0_geom, const amrex::AmrInfo& amr_info, std::string initDataExpr,
+                 std::vector<std::string> initDataVars, int nvar, int ngrow);
 
     /**
      * @brief Helper utility to inspect layout, box counts, and cell counts across active AMR levels.
      * @param displayLimit Max number of boxes to print per level before abbreviating.
      */
-    void printLevelInfo(int displayLimit = 5);
+    void printContainerInfo(int displayLimit = 5);
 
     /**
      * @brief In-place ghost cell update helper for level 'state[lev]'.
@@ -89,4 +83,8 @@ class AMRContainer : public amrex::AmrCore {
     int ngrow;                            ///< Ghost cell halo layer size
     amrex::Vector<amrex::MultiFab> state; ///< Per-level storage arrays
     amrex::Vector<amrex::BCRec> bcs;      ///< Per-variable boundary condition descriptor
+
+    std::vector<std::string> initDataVars;
+    std::string initDataExpr;
+    amrex::Parser initDataExprParser;
 };

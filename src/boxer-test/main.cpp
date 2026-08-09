@@ -22,17 +22,17 @@ int main(int argc, char* argv[]) { // Initialize AMReX (handles MPI setup, GPU d
 
         amrex::AmrInfo amr_info;
 
-        amr_info.max_level = 3;
+        amr_info.max_level = 1;
 
-        amr_info.ref_ratio = {amrex::IntVect(AMREX_D_DECL(2, 2, 2)), amrex::IntVect(AMREX_D_DECL(2, 2, 2)),
-                              amrex::IntVect(AMREX_D_DECL(2, 2, 2)), amrex::IntVect(AMREX_D_DECL(2, 2, 2))};
+        auto ref_ratio = amrex::IntVect(AMREX_D_DECL(2, 2, 2));
+        amr_info.ref_ratio = {ref_ratio, ref_ratio, ref_ratio, ref_ratio, ref_ratio};
 
-        amr_info.n_error_buf = {amrex::IntVect(AMREX_D_DECL(1, 1, 1)), amrex::IntVect(AMREX_D_DECL(1, 1, 1)),
-                                amrex::IntVect(AMREX_D_DECL(1, 1, 1)), amrex::IntVect(AMREX_D_DECL(1, 1, 1))};
+        auto n_error_buf = amrex::IntVect(AMREX_D_DECL(1, 1, 1));
+        amr_info.n_error_buf = {n_error_buf, n_error_buf, n_error_buf, n_error_buf, n_error_buf};
 
-        amr_info.blocking_factor = {amrex::IntVect(AMREX_D_DECL(8, 8, 8)), amrex::IntVect(AMREX_D_DECL(8, 8, 8)),
-                                    amrex::IntVect(AMREX_D_DECL(8, 8, 8)), amrex::IntVect(AMREX_D_DECL(8, 8, 8)),
-                                    amrex::IntVect(AMREX_D_DECL(8, 8, 8))};
+        auto blocking_factor = amrex::IntVect(AMREX_D_DECL(16, 16, 16));
+        amr_info.blocking_factor = {blocking_factor, blocking_factor, blocking_factor, blocking_factor,
+                                    blocking_factor};
 
         auto max_grid_size = amrex::IntVect(AMREX_D_DECL(32, 32, 32));
         amr_info.max_grid_size = {max_grid_size, max_grid_size, max_grid_size, max_grid_size, max_grid_size};
@@ -40,7 +40,7 @@ int main(int argc, char* argv[]) { // Initialize AMReX (handles MPI setup, GPU d
         // Construct your AmrCore derivative
         int ngrow = 1;
 
-        AMRContainer amr(geom, amr_info, 1, ngrow);
+        AMRContainer amr(geom, amr_info, "1/sqrt(x*x + y*y + z*z + 0.01)", {"x", "y", "z"}, 1, ngrow);
         amr.InitFromScratch(0.0);
 
         const auto& mf = amr.getState(0);

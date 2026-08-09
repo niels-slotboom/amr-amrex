@@ -1,21 +1,39 @@
 #include "AMRContainer.hpp"
-#include <sstream>
 
-AMRContainer::AMRContainer(const amrex::Geometry& lev0_geom, const amrex::AmrInfo& amr_info, int nvar, int ngrow)
+#include "AMReX_Box.H"
+#include "AMReX_FillPatchUtil.H"
+#include "AMReX_MFIter.H"
+#include "AMReX_Parser.H"
+
+#include <ostream>
+#include <sstream>
+#include <stdexcept>
+
+AMRContainer::AMRContainer(const amrex::Geometry& lev0_geom, const amrex::AmrInfo& amr_info, std::string initDataExpr_,
+                           std::vector<std::string> initDataVars_, int nvar, int ngrow)
     : AmrCore(lev0_geom, amr_info), nvar(nvar), ngrow(ngrow),
       state(amr_info.max_level + 1), // Preallocate storage for up to max_level + 1 levels
-      bcs(nvar) {
+      bcs(nvar), initDataVars(std::move(initDataVars_)), initDataExpr(std::move(initDataExpr_)), initDataExprParser() {
 
     // Initialize boundary condition metadata (defaulting to internal / periodic boundaries)
     for (int i = 0; i < nvar; ++i) {
         bcs[i] = amrex::BCRec(amrex::BCType::int_dir, amrex::BCType::int_dir, amrex::BCType::int_dir,
                               amrex::BCType::int_dir, amrex::BCType::int_dir, amrex::BCType::int_dir);
     }
+
+    // Set up initial data expression parser
+    initDataExprParser.define(initDataExpr);
+    initDataExprParser.registerVariables({initDataVars[0], initDataVars[1], initDataVars[2]});
 }
 
-void AMRContainer::printLevelInfo(int displayLimit) {
+void AMRContainer::printContainerInfo(int displayLimit) {
     size_t totalCells = 0;
     const int threshold = 20;
+
+    amrex::AllPrint() << "-----------------------------------------------------" << std::endl;
+    amrex::AllPrint() << "AMRContainer with " << finestLevel() << " levels" << std::endl;
+    amrex::AllPrint() << "Initial data expr: f(" << initDataVars[0] << ", " << initDataVars[1] << ", "
+                      << initDataVars[2] << ")" << initDataExpr << std::endl;
 
     for (int lev = 0; lev <= finestLevel(); lev++) {
         const amrex::BoxArray& ba = boxArray(lev);
@@ -117,11 +135,14 @@ void AMRContainer::MakeNewLevelFromScratch(int lev, amrex::Real time, const amre
                                            const amrex::DistributionMapping& dm) {
     state[lev].define(ba, dm, nvar, ngrow);
 
-    // Fill with initialData functor
+    std::cout << "Compiling initDataFunction from initDataExprParser with AMREX_SPACEDIM = " << AMREX_SPACEDIM
+              << " and variable count = " << initDataExprParser.symbols().size() << std::endl;
+    amrex::ParserExecutor<AMREX_SPACEDIM> initDataFunction = initDataExprParser.compile<AMREX_SPACEDIM>();
+
     for (amrex::MFIter mfi(state[lev]); mfi.isValid(); ++mfi) {
         const auto& box = mfi.validbox();
-        auto prob_lo = Geom(lev).ProbLoArray(); // Returns amrex::GpuArray<amrex::Real, AMREX_SPACEDIM>
-        auto dx = Geom(lev).CellSizeArray();    // Returns amrex::GpuArray<amrex::Real, AMREX_SPACEDIM>
+        auto prob_lo = Geom(lev).ProbLoArray();
+        auto dx = Geom(lev).CellSizeArray();
 
         const auto& arr = state[lev].array(mfi);
 
@@ -130,14 +151,14 @@ void AMRContainer::MakeNewLevelFromScratch(int lev, amrex::Real time, const amre
             amrex::Real y = prob_lo[1] + (j + 0.5) * dx[1];
             amrex::Real z = prob_lo[2] + (k + 0.5) * dx[2];
 
-            arr(i, j, k, 0) = 0.0; // TODO: use an AST evaluator from amrex to evaluate initial data function
+            arr(i, j, k, 0) = initDataFunction(x, y, z);
         });
     }
 }
 
 void AMRContainer::MakeNewLevelFromCoarse(int lev, amrex::Real time, const amrex::BoxArray& ba,
                                           const amrex::DistributionMapping& dm) {
-    MakeNewLevelFromScratch(lev, time, ba, dm);
+    state[lev].define(ba, dm, nvar, ngrow);
 
     amrex::PhysBCFunctNoOp phys_bc;
 
