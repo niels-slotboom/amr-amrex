@@ -102,7 +102,9 @@ void AMRContainer::ErrorEst(int lev, amrex::TagBoxArray& tags, amrex::Real time,
     FillPatch(lev, time);
 
     const int nvar_loc = nvar;
-    const amrex::Real threshold = 0.1;
+    const amrex::Real threshold = 0.2;
+    const amrex::Real ref_scale = 1.0;
+    const amrex::Real ref_scale_sq = ref_scale * ref_scale;
 
     // Iterate over grid patches on the GPU/CPU device
     for (amrex::MFIter mfi(tags); mfi.isValid(); ++mfi) {
@@ -115,18 +117,45 @@ void AMRContainer::ErrorEst(int lev, amrex::TagBoxArray& tags, amrex::Real time,
 
             // Estimate gradient squared across all variables
             for (int comp = 0; comp < nvar_loc; comp++) {
-                amrex::Real dx = arr(i + 1, j, k, comp) - arr(i - 1, j, k, comp);
-                amrex::Real dy = arr(i, j + 1, k, comp) - arr(i, j - 1, k, comp);
-                amrex::Real dz = arr(i, j, k + 1, comp) - arr(i, j, k - 1, comp);
+                // first derivatives
+                amrex::Real fx1 = arr(i + 1, j, k, comp) - arr(i, j, k, comp);
+                amrex::Real fx2 = arr(i, j, k, comp) - arr(i - 1, j, k, comp);
+                amrex::Real fy1 = arr(i, j + 1, k, comp) - arr(i, j, k, comp);
+                amrex::Real fy2 = arr(i, j, k, comp) - arr(i, j - 1, k, comp);
+                amrex::Real fz1 = arr(i, j, k + 1, comp) - arr(i, j, k, comp);
+                amrex::Real fz2 = arr(i, j, k, comp) - arr(i, j, k - 1, comp);
 
-                amrex::Real grad_sq = dx * dx + dy * dy + dz * dz;
-                amrex::Real grad_normalised = std::sqrt(grad_sq) / (1 + std::abs(arr(i, j, k)));
-                max_eval_criterion = amrex::max(max_eval_criterion, grad_normalised);
-            }
+                amrex::Real fx_abs = amrex::Math::abs(fx1) + amrex::Math::abs(fx2);
+                amrex::Real fy_abs = amrex::Math::abs(fy1) + amrex::Math::abs(fy2);
+                amrex::Real fz_abs = amrex::Math::abs(fz1) + amrex::Math::abs(fz2);
 
-            // Mark cell for refinement if gradient exceeds error tolerance
-            if (max_eval_criterion > threshold) {
-                tags_arr(i, j, k) = amrex::TagBox::SET;
+                // second derivatives
+                amrex::Real fxx = fx1 - fx2;
+                amrex::Real fyy = fy1 - fy2;
+                amrex::Real fzz = fz1 - fz2;
+
+                // mixed second derivatives
+                amrex::Real fxy = 0.25 * (arr(i + 1, j + 1, k, comp) + arr(i - 1, j - 1, k, comp) -
+                                          arr(i + 1, j - 1, k, comp) - arr(i - 1, j + 1, k, comp));
+                amrex::Real fyz = 0.25 * (arr(i, j + 1, k + 1, comp) + arr(i, j - 1, k - 1, comp) -
+                                          arr(i, j + 1, k - 1, comp) - arr(i, j - 1, k + 1, comp));
+                amrex::Real fzx = 0.25 * (arr(i + 1, j, k + 1, comp) + arr(i - 1, j, k - 1, comp) -
+                                          arr(i + 1, j, k - 1, comp) - arr(i - 1, j, k + 1, comp));
+
+                // squared quantities
+                amrex::Real hessian_frobenius_norm =
+                    fxx * fxx + fyy * fyy + fzz * fzz + 2.0 * (fxy * fxy + fyz * fyz + fzx * fzx);
+                amrex::Real grad_squared = 0.25 * (fx_abs * fx_abs + fy_abs * fy_abs + fz_abs * fz_abs);
+
+                amrex::Real eval_criterion = hessian_frobenius_norm / (grad_squared + ref_scale_sq);
+
+                max_eval_criterion = amrex::max(max_eval_criterion, eval_criterion);
+
+                // Mark cell for refinement if gradient exceeds error tolerance, exit early
+                if (max_eval_criterion > threshold * threshold) {
+                    tags_arr(i, j, k) = amrex::TagBox::SET;
+                    break;
+                }
             }
         });
     }
@@ -135,9 +164,6 @@ void AMRContainer::ErrorEst(int lev, amrex::TagBoxArray& tags, amrex::Real time,
 void AMRContainer::MakeNewLevelFromScratch(int lev, amrex::Real time, const amrex::BoxArray& ba,
                                            const amrex::DistributionMapping& dm) {
     state[lev].define(ba, dm, nvar, ngrow);
-
-    std::cout << "Compiling initDataFunction from initDataExprParser with AMREX_SPACEDIM = " << AMREX_SPACEDIM
-              << " and variable count = " << initDataExprParser.symbols().size() << std::endl;
     amrex::ParserExecutor<AMREX_SPACEDIM> initDataFunction = initDataExprParser.compile<AMREX_SPACEDIM>();
 
     for (amrex::MFIter mfi(state[lev]); mfi.isValid(); ++mfi) {

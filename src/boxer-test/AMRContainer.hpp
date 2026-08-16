@@ -16,10 +16,12 @@ class AMRContainer : public amrex::AmrCore {
     AMRContainer() = delete;
 
     /**
-     * @param lev0_geom Initial coarsest level (level 0) geometry setup.
-     * @param amr_info  AMR refinement parameters (max_level, ref_ratio, etc.).
-     * @param nvar      Number of state variables per grid cell.
-     * @param ngrow     Number of ghost cells needed around valid patch data.
+     * @param lev0_geom    Initial coarsest level (level 0) geometry setup.
+     * @param amr_info     AMR refinement parameters (max_level, ref_ratio, etc.).
+     * @param initDataExpr Mathematical expression defining the function used to initialise data
+     * @param initDataVars The names of the variables used in @param initDataExpr
+     * @param nvar         Number of state variables per grid cell.
+     * @param ngrow        Number of ghost cells needed around valid patch data.
      */
     AMRContainer(const amrex::Geometry& lev0_geom, const amrex::AmrInfo& amr_info, std::string initDataExpr,
                  std::vector<std::string> initDataVars, int nvar, int ngrow);

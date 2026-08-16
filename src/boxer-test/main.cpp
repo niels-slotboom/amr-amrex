@@ -22,12 +22,12 @@ int main(int argc, char* argv[]) { // Initialize AMReX (handles MPI setup, GPU d
 
         amrex::AmrInfo amr_info;
 
-        amr_info.max_level = 1;
+        amr_info.max_level = 10;
 
         auto ref_ratio = amrex::IntVect(AMREX_D_DECL(2, 2, 2));
         amr_info.ref_ratio = {ref_ratio, ref_ratio, ref_ratio, ref_ratio, ref_ratio};
 
-        auto n_error_buf = amrex::IntVect(AMREX_D_DECL(1, 1, 1));
+        auto n_error_buf = amrex::IntVect(AMREX_D_DECL(3, 3, 3));
         amr_info.n_error_buf = {n_error_buf, n_error_buf, n_error_buf, n_error_buf, n_error_buf};
 
         auto blocking_factor = amrex::IntVect(AMREX_D_DECL(16, 16, 16));
@@ -40,7 +40,7 @@ int main(int argc, char* argv[]) { // Initialize AMReX (handles MPI setup, GPU d
         // Construct your AmrCore derivative
         int ngrow = 1;
 
-        AMRContainer amr(geom, amr_info, "1/sqrt(x*x + y*y + z*z + 0.01)", {"x", "y", "z"}, 1, ngrow);
+        AMRContainer amr(geom, amr_info, "1/sqrt(x*x + y*y + z*z + 0.001)", {"x", "y", "z"}, 1, ngrow);
         amr.InitFromScratch(0.0);
 
         const auto& mf = amr.getState(0);
