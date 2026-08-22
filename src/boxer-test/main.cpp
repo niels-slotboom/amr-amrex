@@ -40,7 +40,7 @@ int main(int argc, char* argv[]) { // Initialize AMReX (handles MPI setup, GPU d
         // Construct your AmrCore derivative
         int ngrow = 1;
 
-        AMRContainer amr(geom, amr_info, "1/sqrt(x*x + y*y + z*z + 0.001)", {"x", "y", "z"}, 1, ngrow);
+        AMRContainer amr(geom, amr_info, "1/sqrt(x*x + y*y + z*z + 0.001)", {"x", "y", "z"}, {"phi"}, ngrow);
         amr.InitFromScratch(0.0);
 
         const auto& mf = amr.getState(0);

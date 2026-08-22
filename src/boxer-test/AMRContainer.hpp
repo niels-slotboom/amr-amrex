@@ -16,15 +16,15 @@ class AMRContainer : public amrex::AmrCore {
     AMRContainer() = delete;
 
     /**
-     * @param lev0_geom    Initial coarsest level (level 0) geometry setup.
-     * @param amr_info     AMR refinement parameters (max_level, ref_ratio, etc.).
-     * @param initDataExpr Mathematical expression defining the function used to initialise data
-     * @param initDataVars The names of the variables used in @param initDataExpr
-     * @param nvar         Number of state variables per grid cell.
-     * @param ngrow        Number of ghost cells needed around valid patch data.
+     * @param lev0_geom      Initial coarsest level (level 0) geometry setup.
+     * @param amr_info       AMR refinement parameters (max_level, ref_ratio, etc.).
+     * @param initDataExpr   Mathematical expression defining the function used to initialise data
+     * @param initDataCoords The names of the coordinates/variables used in @param initDataExpr
+     * @param varNames       Names of the variables per grid cell, nvar is inferred from this
+     * @param ngrow          Number of ghost cells needed around valid patch data.
      */
     AMRContainer(const amrex::Geometry& lev0_geom, const amrex::AmrInfo& amr_info, std::string initDataExpr,
-                 std::vector<std::string> initDataVars, int nvar, int ngrow);
+                 std::vector<std::string> initDataCoords, amrex::Vector<std::string> compNames, int ngrow);
 
     /**
      * @brief Helper utility to inspect layout, box counts, and cell counts across active AMR levels.
@@ -45,6 +45,8 @@ class AMRContainer : public amrex::AmrCore {
     void FillPatch(amrex::MultiFab& dst, int lev, amrex::Real time);
 
     const amrex::MultiFab& getState(int lev) const;
+
+    void writeMultiLevelPlotFile(const std::string& filename, amrex::Real time, const amrex::Vector<int>& level_steps);
 
   public:
     // =========================================================================
@@ -81,12 +83,13 @@ class AMRContainer : public amrex::AmrCore {
     virtual void ClearLevel(int lev) override;
 
   private:
-    int nvar;                             ///< Number of field components per cell
+    int ncomp; ///< Number of field components per cell
+    amrex::Vector<std::string> compNames;
     int ngrow;                            ///< Ghost cell halo layer size
     amrex::Vector<amrex::MultiFab> state; ///< Per-level storage arrays
     amrex::Vector<amrex::BCRec> bcs;      ///< Per-variable boundary condition descriptor
 
-    std::vector<std::string> initDataVars;
+    std::vector<std::string> initDataCoords;
     std::string initDataExpr;
     amrex::Parser initDataExprParser;
 };

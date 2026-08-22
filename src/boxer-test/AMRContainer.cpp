@@ -4,26 +4,28 @@
 #include "AMReX_FillPatchUtil.H"
 #include "AMReX_MFIter.H"
 #include "AMReX_Parser.H"
+#include "AMReX_PlotFileUtil.H"
 
 #include <ostream>
 #include <sstream>
 #include <stdexcept>
 
 AMRContainer::AMRContainer(const amrex::Geometry& lev0_geom, const amrex::AmrInfo& amr_info, std::string initDataExpr_,
-                           std::vector<std::string> initDataVars_, int nvar, int ngrow)
-    : AmrCore(lev0_geom, amr_info), nvar(nvar), ngrow(ngrow),
+                           std::vector<std::string> initDataCoords_, amrex::Vector<std::string> compNames_, int ngrow)
+    : AmrCore(lev0_geom, amr_info), ncomp(compNames_.size()), compNames(std::move(compNames_)), ngrow(ngrow),
       state(amr_info.max_level + 1), // Preallocate storage for up to max_level + 1 levels
-      bcs(nvar), initDataVars(std::move(initDataVars_)), initDataExpr(std::move(initDataExpr_)), initDataExprParser() {
+      bcs(ncomp), initDataCoords(std::move(initDataCoords_)), initDataExpr(std::move(initDataExpr_)),
+      initDataExprParser() {
 
     // Initialize boundary condition metadata (defaulting to internal / periodic boundaries)
-    for (int i = 0; i < nvar; ++i) {
+    for (int i = 0; i < ncomp; ++i) {
         bcs[i] = amrex::BCRec(amrex::BCType::int_dir, amrex::BCType::int_dir, amrex::BCType::int_dir,
                               amrex::BCType::int_dir, amrex::BCType::int_dir, amrex::BCType::int_dir);
     }
 
     // Set up initial data expression parser
     initDataExprParser.define(initDataExpr);
-    initDataExprParser.registerVariables({initDataVars[0], initDataVars[1], initDataVars[2]});
+    initDataExprParser.registerVariables({initDataCoords[0], initDataCoords[1], initDataCoords[2]});
 }
 
 void AMRContainer::printContainerInfo(int displayLimit) {
@@ -32,8 +34,8 @@ void AMRContainer::printContainerInfo(int displayLimit) {
 
     amrex::AllPrint() << "-----------------------------------------------------" << std::endl;
     amrex::AllPrint() << "AMRContainer with " << finestLevel() << " levels" << std::endl;
-    amrex::AllPrint() << "Initial data expr: f(" << initDataVars[0] << ", " << initDataVars[1] << ", "
-                      << initDataVars[2] << ")" << initDataExpr << std::endl;
+    amrex::AllPrint() << "Initial data expr: f(" << initDataCoords[0] << ", " << initDataCoords[1] << ", "
+                      << initDataCoords[2] << ")" << initDataExpr << std::endl;
 
     for (int lev = 0; lev <= finestLevel(); lev++) {
         const amrex::BoxArray& ba = boxArray(lev);
@@ -76,16 +78,21 @@ void AMRContainer::FillPatch(amrex::MultiFab& dst, int lev, amrex::Real time) {
         amrex::Vector<amrex::Real> times{time};
 
         // Level 0: simple ghost-cell fill from periodic boundaries / neighboring grids
-        amrex::FillPatchSingleLevel(dst, time, src, times, 0, 0, nvar, Geom(lev), phys_bc, 0);
+        amrex::FillPatchSingleLevel(dst, time, src, times, 0, 0, ncomp, Geom(lev), phys_bc, 0);
     } else {
         amrex::Vector<amrex::MultiFab*> fine_src{&state[lev]};
         amrex::Vector<amrex::MultiFab*> coarse_src{&state[lev - 1]};
         amrex::Vector<amrex::Real> times{time};
 
         // Fine levels: fill interior from fine level, boundaries/ghosts interpolated from coarse level
-        amrex::FillPatchTwoLevels(dst, time, coarse_src, times, fine_src, times, 0, 0, nvar, Geom(lev - 1), Geom(lev),
+        amrex::FillPatchTwoLevels(dst, time, coarse_src, times, fine_src, times, 0, 0, ncomp, Geom(lev - 1), Geom(lev),
                                   phys_bc, 0, phys_bc, 0, refRatio(lev - 1), &amrex::cell_cons_interp, bcs, 0);
     }
+}
+
+void AMRContainer::writeMultiLevelPlotFile(const std::string& filename, amrex::Real time,
+                                           const amrex::Vector<int>& level_steps) {
+    // amrex::WriteMultiLevelPlotfile(filename, state.size(), state, compNames, Geom(), time, level_steps, refRatio())
 }
 
 const amrex::MultiFab& AMRContainer::getState(int lev) const {
@@ -101,7 +108,7 @@ void AMRContainer::ErrorEst(int lev, amrex::TagBoxArray& tags, amrex::Real time,
     // Populate ghost cells so finite-difference stencil reads valid neighbor data
     FillPatch(lev, time);
 
-    const int nvar_loc = nvar;
+    const int nvar_loc = ncomp;
     const amrex::Real threshold = 0.2;
     const amrex::Real ref_scale = 1.0;
     const amrex::Real ref_scale_sq = ref_scale * ref_scale;
@@ -163,7 +170,7 @@ void AMRContainer::ErrorEst(int lev, amrex::TagBoxArray& tags, amrex::Real time,
 
 void AMRContainer::MakeNewLevelFromScratch(int lev, amrex::Real time, const amrex::BoxArray& ba,
                                            const amrex::DistributionMapping& dm) {
-    state[lev].define(ba, dm, nvar, ngrow);
+    state[lev].define(ba, dm, ncomp, ngrow);
     amrex::ParserExecutor<AMREX_SPACEDIM> initDataFunction = initDataExprParser.compile<AMREX_SPACEDIM>();
 
     for (amrex::MFIter mfi(state[lev]); mfi.isValid(); ++mfi) {
@@ -185,12 +192,12 @@ void AMRContainer::MakeNewLevelFromScratch(int lev, amrex::Real time, const amre
 
 void AMRContainer::MakeNewLevelFromCoarse(int lev, amrex::Real time, const amrex::BoxArray& ba,
                                           const amrex::DistributionMapping& dm) {
-    state[lev].define(ba, dm, nvar, ngrow);
+    state[lev].define(ba, dm, ncomp, ngrow);
 
     amrex::PhysBCFunctNoOp phys_bc;
 
     // Conservative cell-centered interpolation from lev-1 -> lev
-    amrex::InterpFromCoarseLevel(state[lev], time, state[lev - 1], 0, 0, nvar, Geom(lev - 1), Geom(lev), phys_bc, 0,
+    amrex::InterpFromCoarseLevel(state[lev], time, state[lev - 1], 0, 0, ncomp, Geom(lev - 1), Geom(lev), phys_bc, 0,
                                  phys_bc, 0, refRatio(lev - 1), &amrex::cell_cons_interp, bcs, 0);
 }
 
@@ -204,7 +211,7 @@ void AMRContainer::RemakeLevel(int lev, amrex::Real time, const amrex::BoxArray&
     MakeNewLevelFromCoarse(lev, time, ba, dm);
 
     // 3. Overwrite overlapping regions with exact data saved in old_state
-    amrex::Copy(state[lev], old_state, 0, 0, nvar, 0);
+    amrex::Copy(state[lev], old_state, 0, 0, ncomp, 0);
 
     // 4. Update ghost boundaries across all newly positioned patches
     FillPatch(lev, time);
