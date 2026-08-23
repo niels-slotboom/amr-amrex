@@ -40,14 +40,15 @@ int main(int argc, char* argv[]) { // Initialize AMReX (handles MPI setup, GPU d
         // Construct your AmrCore derivative
         int ngrow = 1;
 
-        AMRContainer amr(geom, amr_info, "1/sqrt(x*x + y*y + z*z + 0.001)", {"x", "y", "z"}, {"phi"}, ngrow);
+        AMRContainer amr(
+            geom, amr_info,
+            "1/sqrt(x*x + y*y + z*z + 0.0001) + 1/sqrt((x-0.4)*(x-0.4) + (y-0.3)*(y-0.3) + 0.1 * z*z + 0.0001)",
+            {"x", "y", "z"}, {"phi"}, ngrow);
         amr.InitFromScratch(0.0);
 
-        const auto& mf = amr.getState(0);
-        amrex::Real min_val = mf.min(0);
-        amrex::Real max_val = mf.max(0);
+        amrex::Vector<int> level_steps(amr_info.max_level, 0);
 
-        amrex::Print() << "Level 0 Min: " << min_val << " | Max: " << max_val << "\n";
+        amr.writeMultiLevelPlotFile("raw/test", 0.0, level_steps);
 
         boxer::show(amr, ngrow);
     }

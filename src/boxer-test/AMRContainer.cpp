@@ -92,7 +92,12 @@ void AMRContainer::FillPatch(amrex::MultiFab& dst, int lev, amrex::Real time) {
 
 void AMRContainer::writeMultiLevelPlotFile(const std::string& filename, amrex::Real time,
                                            const amrex::Vector<int>& level_steps) {
-    // amrex::WriteMultiLevelPlotfile(filename, state.size(), state, compNames, Geom(), time, level_steps, refRatio())
+    amrex::Vector<const amrex::MultiFab*> state_ptrs(state.size());
+    for (size_t i = 0; i < state.size(); ++i) {
+        state_ptrs[i] = &state[i];
+    }
+    amrex::WriteMultiLevelPlotfile(filename, finestLevel() + 1, state_ptrs, compNames, Geom(), time, level_steps,
+                                   refRatio());
 }
 
 const amrex::MultiFab& AMRContainer::getState(int lev) const {
