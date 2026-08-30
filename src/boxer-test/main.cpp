@@ -12,7 +12,7 @@ int main(int argc, char* argv[]) { // Initialize AMReX (handles MPI setup, GPU d
         // Physical domain: [0,1]^3
         amrex::RealBox real_box({AMREX_D_DECL(-2.0, -2.0, -2.0)}, {AMREX_D_DECL(2.0, 2.0, 2.0)});
 
-        std::array<int, dim> is_periodic{AMREX_D_DECL(1, 1, 1)};
+        std::array<int, dim> is_periodic{AMREX_D_DECL(0, 0, 0)};
 
         amrex::Geometry geom(domain, &real_box, 0, is_periodic.data());
 
@@ -27,7 +27,7 @@ int main(int argc, char* argv[]) { // Initialize AMReX (handles MPI setup, GPU d
         auto ref_ratio = amrex::IntVect(AMREX_D_DECL(2, 2, 2));
         amr_info.ref_ratio = {ref_ratio, ref_ratio, ref_ratio, ref_ratio, ref_ratio};
 
-        auto n_error_buf = amrex::IntVect(AMREX_D_DECL(3, 3, 3));
+        auto n_error_buf = amrex::IntVect(AMREX_D_DECL(1, 1, 1));
         amr_info.n_error_buf = {n_error_buf, n_error_buf, n_error_buf, n_error_buf, n_error_buf};
 
         auto blocking_factor = amrex::IntVect(AMREX_D_DECL(16, 16, 16));
@@ -42,7 +42,9 @@ int main(int argc, char* argv[]) { // Initialize AMReX (handles MPI setup, GPU d
 
         AMRContainer amr(
             geom, amr_info,
-            "1/sqrt(x*x + y*y + z*z + 0.0001) + 1/sqrt((x-0.4)*(x-0.4) + (y-0.3)*(y-0.3) + 0.1 * z*z + 0.0001)",
+            "1/sqrt((x+2)*(x+2) + (y+1)*(y+1) + z*z + 0.0001) + 1/sqrt((x-2)*(x-2) + (y-1)*(y-1) + z*z + "
+            "0.0001) - "
+            "1/sqrt((x+1)*(x+1) + (y-2)*(y-2) + z*z + 0.0001) - 1/sqrt((x-1)*(x-1) + (y+2)*(y+2) + z*z + 0.0001)",
             {"x", "y", "z"}, {"phi"}, ngrow);
         amr.InitFromScratch(0.0);
 

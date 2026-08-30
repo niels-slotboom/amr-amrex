@@ -5,6 +5,7 @@
 #include "AMReX_MFIter.H"
 #include "AMReX_Parser.H"
 #include "AMReX_PlotFileUtil.H"
+#include "boundary-conditions/LinExtrapBC.hpp"
 
 #include <ostream>
 #include <sstream>
@@ -71,14 +72,19 @@ void AMRContainer::FillPatch(amrex::MultiFab& dst, int lev, amrex::Real time) {
         amrex::Abort("AMRContainer::FillPatch: invalid level");
     }
 
-    amrex::PhysBCFunctNoOp phys_bc; // Dummy functor for periodic / interior boundary handling
+    LinExtrapBC linExtrapBC;
+
+    amrex::GpuBndryFuncFab gpu_bndry_func(linExtrapBC);
+
+    amrex::PhysBCFunct c_phys_bc(Geom(lev - 1), bcs, gpu_bndry_func);
+    amrex::PhysBCFunct f_phys_bc(Geom(lev), bcs, gpu_bndry_func);
 
     if (lev == 0) {
         amrex::Vector<amrex::MultiFab*> src{&dst};
         amrex::Vector<amrex::Real> times{time};
 
         // Level 0: simple ghost-cell fill from periodic boundaries / neighboring grids
-        amrex::FillPatchSingleLevel(dst, time, src, times, 0, 0, ncomp, Geom(lev), phys_bc, 0);
+        amrex::FillPatchSingleLevel(dst, time, src, times, 0, 0, ncomp, Geom(lev), f_phys_bc, 0);
     } else {
         amrex::Vector<amrex::MultiFab*> fine_src{&state[lev]};
         amrex::Vector<amrex::MultiFab*> coarse_src{&state[lev - 1]};
@@ -86,7 +92,7 @@ void AMRContainer::FillPatch(amrex::MultiFab& dst, int lev, amrex::Real time) {
 
         // Fine levels: fill interior from fine level, boundaries/ghosts interpolated from coarse level
         amrex::FillPatchTwoLevels(dst, time, coarse_src, times, fine_src, times, 0, 0, ncomp, Geom(lev - 1), Geom(lev),
-                                  phys_bc, 0, phys_bc, 0, refRatio(lev - 1), &amrex::cell_cons_interp, bcs, 0);
+                                  c_phys_bc, 0, f_phys_bc, 0, refRatio(lev - 1), &amrex::cell_cons_interp, bcs, 0);
     }
 }
 
