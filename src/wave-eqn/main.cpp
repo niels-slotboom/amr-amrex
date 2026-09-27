@@ -1,5 +1,6 @@
 #include "AMReX.H"
 #include "AMReX_Print.H"
+#include "Integrator.hpp"
 #include <iostream>
 
 int main(int argc, char** argv) {
