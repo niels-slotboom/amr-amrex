@@ -9,4 +9,6 @@
         "-DCMAKE_BUILD_TYPE=Release"
     ],
     "clangd.path": "/usr/bin/clangd",
+    "editor.tabSize": 4,
+    "editor.detectIndentation": false
 }
