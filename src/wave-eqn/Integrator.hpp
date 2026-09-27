@@ -8,39 +8,52 @@
 
 /**
  * @brief Concept verifying that a type can evaluate a Right-Hand Side (RHS) term.
+ * @details Requires the type to implement operator() with the correct signature and statically
+ *          expose `ncomp` and `ngrow` as integer constants.
  */
 template <typename T>
 concept RHSConcept =
     requires(T t, int i, int j, int k, int comp, amrex::Real time, const amrex::Array4<amrex::Real>& arr) {
         { t(i, j, k, comp, time, arr) } -> std::convertible_to<amrex::Real>;
+        { T::ncomp } -> std::convertible_to<int>;
+        { T::ngrow } -> std::convertible_to<int>;
     };
 
 /**
  * @brief Concept verifying that a type can evaluate initial conditions at given spatial coordinates.
+ * @details Requires the type to implement operator() with the correct signature and statically
+ *          expose `ncomp` as an integer constant.
  */
 template <typename T>
 concept InitConcept = requires(T t, amrex::Real x, amrex::Real y, amrex::Real z, int comp) {
     { t(x, y, z, comp) } -> std::convertible_to<amrex::Real>;
+    { T::ncomp } -> std::convertible_to<int>;
 };
 
 /**
  * @brief Base class for time-integration frameworks handling grid layout, state containers, and execution lifecycle.
- * @tparam RHSFunctor Type representing the spatial RHS operator.
- * @tparam InitFunctor Type representing the initial condition provider.
+ * @details Automatically infers component count (`ncomp`) and ghost cell requirements (`ngrow`)
+ *          statically from the provided RHSFunctor. Functor structs must declare these as static members.
+ * @tparam RHSFunctor Type representing the spatial RHS operator (must satisfy RHSConcept).
+ * @tparam InitFunctor Type representing the initial condition provider (must satisfy InitConcept).
  */
-template <typename RHSFunctor, typename InitFunctor> class Integrator {
+template <typename RHSFunctor, typename InitFunctor>
+    requires RHSConcept<RHSFunctor> && InitConcept<InitFunctor>
+class Integrator {
+    static constexpr int ncomp = RHSFunctor::ncomp;
+    static constexpr int ngrow = RHSFunctor::ngrow;
+
+    static_assert(InitFunctor::ncomp == ncomp, "InitFunctor::ncomp does not match RHSFunctor::ncomp");
+
   public:
     /**
      * @brief Construct a new Integrator object.
      * @param geom_ AMReX Geometry specifying the physical domain.
      * @param block_size Maximum block size for box partitioning.
-     * @param ncomp Number of components in the MultiFab state containers.
-     * @param ngrow Number of ghost cells/zones.
      * @param rhs_ Instance of the RHS functor.
      * @param init_ Instance of the initialization functor.
      */
-    Integrator(amrex::Geometry geom_, const amrex::IntVect& block_size, int ncomp, int ngrow, RHSFunctor rhs_,
-               InitFunctor init_)
+    Integrator(amrex::Geometry geom_, const amrex::IntVect& block_size, RHSFunctor rhs_, InitFunctor init_)
         : geom(std::move(geom_)), ba(makeBoxArray(geom, block_size)), dm(ba), state_old(ba, dm, ncomp, ngrow),
           state_new(ba, dm, ncomp, ngrow), rhs(std::move(rhs_)), init(std::move(init_)) {}
 
@@ -48,7 +61,6 @@ template <typename RHSFunctor, typename InitFunctor> class Integrator {
      * @brief Initialise the primary state container using the initialization functor over physical coordinates.
      */
     void initialise() {
-        int ncomp = state_old.nComp();
         InitFunctor init_ = init;
         amrex::GpuArray<amrex::Real, 3> dx = geom.CellSizeArray();
         amrex::GpuArray<amrex::Real, 3> lo = geom.ProbLoArray();
@@ -110,7 +122,7 @@ template <typename RHSFunctor, typename InitFunctor> class Integrator {
     size_t steps = 0;       ///< Total number of completed time steps.
     amrex::Real time = 0.0; ///< Current physical simulation time.
 
-    RHSFunctor rhs; ///< Spatial right-hand side evaluation functor.
+    RHSFunctor rhs; ///< Spatial PDE right-hand side evaluation functor.
 
   private:
     InitFunctor init; ///< Initial condition evaluation functor.
