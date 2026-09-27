@@ -47,3 +47,4 @@ FetchContent_MakeAvailable(amrex)
 find_package(Boxer REQUIRED)
 
 add_subdirectory(src/boxer-test)
+add_subdirectory(src/wave-eqn)
