@@ -13,7 +13,7 @@
  */
 template <typename T>
 concept RHSConcept =
-    requires(T t, int i, int j, int k, int comp, amrex::Real time, const amrex::Array4<amrex::Real>& arr) {
+    requires(T t, int i, int j, int k, int comp, amrex::Real time, amrex::Array4<const amrex::Real> arr) {
         { t(i, j, k, comp, time, arr) } -> std::convertible_to<amrex::Real>;
         { T::ncomp } -> std::convertible_to<int>;
         { T::ngrow } -> std::convertible_to<int>;
@@ -40,6 +40,7 @@ concept InitConcept = requires(T t, amrex::Real x, amrex::Real y, amrex::Real z,
 template <typename RHSFunctor, typename InitFunctor>
     requires RHSConcept<RHSFunctor> && InitConcept<InitFunctor>
 class Integrator {
+  protected:
     static constexpr int ncomp = RHSFunctor::ncomp;
     static constexpr int ngrow = RHSFunctor::ngrow;
 
@@ -67,7 +68,7 @@ class Integrator {
 
         for (amrex::MFIter mfi(state_old); mfi.isValid(); ++mfi) {
             auto box = mfi.validbox();
-            const amrex::Array4<amrex::Real>& arr = state_old.array(mfi);
+            amrex::Array4<amrex::Real> arr = state_old.array(mfi);
             amrex::ParallelFor(box, [=] AMREX_GPU_DEVICE(int i, int j, int k) {
                 amrex::Real x = lo[0] + (i + 0.5) * dx[0];
                 amrex::Real y = lo[1] + (j + 0.5) * dx[1];
