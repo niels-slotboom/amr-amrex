@@ -5,6 +5,8 @@ set(SOURCES_WAVE_EQN
 set(HEADERS_WAVE_EQN
     int/Integrator.hpp
     int/EulerIntegrator.hpp
+    init/ConstInit.hpp
+    rhs/WaveEqnRHS.hpp
 )
 
 
