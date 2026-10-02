@@ -7,9 +7,8 @@ template <int ncomp_> struct ConstInit {
     static constexpr int ncomp = ncomp_;
     amrex::Real value;
 
-    amrex::Real AMREX_GPU_HOST_DEVICE operator()(amrex::Real x, amrex::Real y, amrex::Real z, int comp) const {
-        return value;
-    }
+    AMREX_GPU_HOST_DEVICE
+    amrex::Real operator()(amrex::Real x, amrex::Real y, amrex::Real z, int comp) const { return value; }
 };
 
 static_assert(InitConcept<ConstInit<1>>);

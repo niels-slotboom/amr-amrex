@@ -14,7 +14,8 @@
  */
 template <typename T>
 concept RHSConcept =
-    requires(const T t, int i, int j, int k, int comp, amrex::Real time, amrex::Array4<const amrex::Real> arr) {
+    std::is_trivially_copyable_v<T> &&
+    requires(const T& t, int i, int j, int k, int comp, amrex::Real time, amrex::Array4<const amrex::Real> arr) {
         { t(i, j, k, comp, time, arr) } -> std::convertible_to<amrex::Real>;
         { T::ncomp } -> std::convertible_to<int>;
         { T::ngrow } -> std::convertible_to<int>;
@@ -26,15 +27,21 @@ concept RHSConcept =
  *          expose `ncomp` as an integer constant.
  */
 template <typename T>
-concept InitConcept = requires(const T t, amrex::Real x, amrex::Real y, amrex::Real z, int comp) {
-    { t(x, y, z, comp) } -> std::convertible_to<amrex::Real>;
-    { T::ncomp } -> std::convertible_to<int>;
-};
-
+concept InitConcept =
+    std::is_trivially_copyable_v<T> && requires(const T& t, amrex::Real x, amrex::Real y, amrex::Real z, int comp) {
+        { t(x, y, z, comp) } -> std::convertible_to<amrex::Real>;
+        { T::ncomp } -> std::convertible_to<int>;
+    };
 /**
  * @brief Base class for time-integration frameworks handling grid layout, state containers, and execution lifecycle.
  * @details Automatically infers component count (`ncomp`) and ghost cell requirements (`ngrow`)
  *          statically from the provided RHSFunctor. Functor structs must declare these as static members.
+ *
+ *          Derived classes implementing specific integration schemes (e.g., multi-stage Runge-Kutta)
+ *          are responsible for allocating and managing any auxiliary state memory or intermediate
+ *          buffers required by their algorithm, as well as orchestrating necessary intermediate
+ *          ghost-cell exchanges (`FillBoundary`).
+ *
  * @tparam RHSFunctor Type representing the spatial RHS operator (must satisfy RHSConcept).
  * @tparam InitFunctor Type representing the initial condition provider (must satisfy InitConcept).
  */
@@ -58,6 +65,8 @@ class Integrator {
     Integrator(amrex::Geometry geom_, const amrex::IntVect& block_size, RHSFunctor rhs_, InitFunctor init_)
         : geom(std::move(geom_)), ba(makeBoxArray(geom, block_size)), dm(ba), state_old(ba, dm, ncomp, ngrow),
           state_new(ba, dm, ncomp, ngrow), rhs(std::move(rhs_)), init(std::move(init_)) {}
+
+    virtual ~Integrator() = default;
 
     /**
      * @brief Initialise the primary state container using the initialization functor over physical coordinates.
@@ -86,8 +95,8 @@ class Integrator {
      * @brief Execute a single time step of duration delta_time.
      * @param delta_time Size of the time step.
      */
-    void step(double delta_time) {
-        state_old.FillBoundary();
+    void step(amrex::Real delta_time) {
+        state_old.FillBoundary(geom.periodicity());
 
         computeNewState(delta_time);
         std::swap(state_old, state_new);
@@ -101,7 +110,7 @@ class Integrator {
      * @brief Populate state_new based on state_old over a given time step.
      * @param delta_time Size of the time step.
      */
-    virtual void computeNewState(double delta_time) = 0;
+    virtual void computeNewState(amrex::Real delta_time) = 0;
 
   private:
     /**

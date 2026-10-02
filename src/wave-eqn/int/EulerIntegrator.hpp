@@ -21,7 +21,7 @@ class EulerIntegrator : public Integrator<RHSFunctor, InitFunctor> {
     using Integrator<RHSFunctor, InitFunctor>::Integrator;
 
   protected:
-    virtual void computeNewState(double delta_time) override {
+    void computeNewState(amrex::Real delta_time) override {
         // make local for lambda capture
         RHSFunctor rhs_ = rhs;
         amrex::Real time_ = time;
