@@ -1,3 +1,4 @@
+#pragma once
 #include "AMReX_DistributionMapping.H"
 #include "AMReX_Geometry.H"
 #include "AMReX_MFIter.H"
@@ -13,7 +14,7 @@
  */
 template <typename T>
 concept RHSConcept =
-    requires(T t, int i, int j, int k, int comp, amrex::Real time, amrex::Array4<const amrex::Real> arr) {
+    requires(const T t, int i, int j, int k, int comp, amrex::Real time, amrex::Array4<const amrex::Real> arr) {
         { t(i, j, k, comp, time, arr) } -> std::convertible_to<amrex::Real>;
         { T::ncomp } -> std::convertible_to<int>;
         { T::ngrow } -> std::convertible_to<int>;
@@ -25,7 +26,7 @@ concept RHSConcept =
  *          expose `ncomp` as an integer constant.
  */
 template <typename T>
-concept InitConcept = requires(T t, amrex::Real x, amrex::Real y, amrex::Real z, int comp) {
+concept InitConcept = requires(const T t, amrex::Real x, amrex::Real y, amrex::Real z, int comp) {
     { t(x, y, z, comp) } -> std::convertible_to<amrex::Real>;
     { T::ncomp } -> std::convertible_to<int>;
 };

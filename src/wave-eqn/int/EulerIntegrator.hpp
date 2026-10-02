@@ -1,6 +1,7 @@
+#pragma once
 #include "AMReX_Array4.H"
 #include "AMReX_MFIter.H"
-#include "Integrator.hpp"
+#include "int/Integrator.hpp"
 
 template <typename RHSFunctor, typename InitFunctor>
     requires RHSConcept<RHSFunctor> && InitConcept<InitFunctor>
