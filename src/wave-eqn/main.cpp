@@ -3,6 +3,7 @@
 #include "AMReX_IntVect.H"
 #include "AMReX_Print.H"
 #include "init/ConstInit.hpp"
+#include "init/FunctionInit.hpp"
 #include "int/EulerIntegrator.hpp"
 #include "rhs/WaveEqnRHS.hpp"
 #include <iostream>
@@ -35,6 +36,9 @@ template <typename T> std::string duration_since(T start) {
 int main(int argc, char** argv) {
     amrex::Initialize(argc, argv);
     {
+        using RHS = WaveEqnRHS;
+        using Init = FunctionInit<RHS::ncomp>;
+
         amrex::AllPrint() << "Setting up simulation..." << std::endl;
 
         // set up domain
@@ -45,10 +49,10 @@ int main(int argc, char** argv) {
 
         amrex::Real dx = geom.CellSize(0);
 
-        WaveEqnRHS rhs(dx);
-        ConstInit<decltype(rhs)::ncomp> init(0.0);
+        RHS rhs(dx);
+        Init init({"0.0", "0.0"});
 
-        EulerIntegrator<decltype(rhs), decltype(init)> integrator(geom, {96, 96, 96}, rhs, init);
+        EulerIntegrator<RHS, Init> integrator(geom, {96, 96, 96}, rhs, init);
 
         integrator.initialise();
 
@@ -59,7 +63,7 @@ int main(int argc, char** argv) {
 
         auto start = std::chrono::system_clock::now();
 
-        for (size_t step = 0; step < steps; ++step) {
+        for (size_t step = 0; step <= steps; ++step) {
             if (step % export_interval == 0) {
                 amrex::AllPrint() << duration_since(start) << " Reached step " << step << std::endl;
             }
