@@ -28,7 +28,7 @@ concept RHSConcept =
  */
 template <typename T>
 concept InitConcept =
-    std::is_trivially_copyable_v<T> && requires(const T& t, amrex::Real x, amrex::Real y, amrex::Real z, int comp) {
+    std::copy_constructible<T> && requires(const T& t, amrex::Real x, amrex::Real y, amrex::Real z, int comp) {
         { t(x, y, z, comp) } -> std::convertible_to<amrex::Real>;
         { T::ncomp } -> std::convertible_to<int>;
     };

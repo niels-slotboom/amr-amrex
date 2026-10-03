@@ -13,9 +13,10 @@ template <int ncomp_> struct FunctionInit {
     FunctionInit() = delete;
 
     // constructor creates host parsers and extracts the compiled executors
-    explicit FunctionInit(amrex::Array<std::string, ncomp> exprs_) : exprs(std::move(exprs_)) {
+    explicit FunctionInit(amrex::Array<std::string, ncomp> exprs_)
+        : exprs(std::move(exprs_)), parsers(std::make_shared<amrex::Array<amrex::Parser, ncomp>>()) {
         for (int i = 0; i < ncomp; ++i) {
-            amrex::Parser& parser = parsers[i];
+            amrex::Parser& parser = (*parsers)[i];
             parser.define(exprs[i]);
             parser.registerVariables({"x", "y", "z"});
             executors[i] = parser.compile<3>();
@@ -28,10 +29,9 @@ template <int ncomp_> struct FunctionInit {
         return executors[comp](x, y, z);
     }
 
-    const amrex::Array<std::string, ncomp> exprs;
-
   private:
-    amrex::Array<amrex::Parser, ncomp> parsers;
+    amrex::Array<std::string, ncomp> exprs;
+    std::shared_ptr<amrex::Array<amrex::Parser, ncomp>> parsers; // shared_ptr because they need to be heap-allocated
     amrex::GpuArray<amrex::ParserExecutor<3>, ncomp> executors;
 };
 
