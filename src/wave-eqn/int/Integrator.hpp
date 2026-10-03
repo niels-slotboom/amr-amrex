@@ -2,6 +2,7 @@
 #include "AMReX_DistributionMapping.H"
 #include "AMReX_Geometry.H"
 #include "AMReX_MFIter.H"
+#include "util/PlotExporter.hpp"
 #include <AMReX.H>
 #include <AMReX_MultiFab.H>
 
@@ -17,6 +18,7 @@ concept RHSConcept =
     std::is_trivially_copyable_v<T> &&
     requires(const T& t, int i, int j, int k, int comp, amrex::Real time, amrex::Array4<const amrex::Real> arr) {
         { t(i, j, k, comp, time, arr) } -> std::convertible_to<amrex::Real>;
+        { T::comp_names } -> std::convertible_to<amrex::Vector<std::string>>;
         { T::ncomp } -> std::convertible_to<int>;
         { T::ngrow } -> std::convertible_to<int>;
     };
@@ -91,12 +93,19 @@ class Integrator {
         }
     }
 
+    void configureExporter(const fs::path& path, int export_interval) {
+        exporter.emplace(state_old, geom, RHSFunctor::comp_names, path, export_interval);
+    }
+
     /**
      * @brief Execute a single time step of duration delta_time.
      * @param delta_time Size of the time step.
      */
     void step(amrex::Real delta_time) {
         state_old.FillBoundary(geom.periodicity());
+
+        if (exporter)
+            exporter->exportIfNecessary(steps, time);
 
         computeNewState(delta_time);
         std::swap(state_old, state_new);
@@ -137,4 +146,6 @@ class Integrator {
 
   private:
     InitFunctor init; ///< Initial condition evaluation functor.
+
+    std::optional<PlotExporter> exporter = std::nullopt; ///< Exporter for periodic plotfile export
 };

@@ -6,6 +6,8 @@ struct WaveEqnRHS {
     static constexpr int ncomp = 2;
     static constexpr int ngrow = 1;
 
+    static inline const amrex::Vector<std::string> comp_names = {"phi", "dphi_dt"};
+
     enum Component : int { phi = 0, dphi_dt = 1 };
 
     AMREX_GPU_HOST_DEVICE
