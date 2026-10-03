@@ -50,16 +50,17 @@ int main(int argc, char** argv) {
         amrex::Real dx = geom.CellSize(0);
 
         RHS rhs(dx);
-        Init init({"0.0", "0.0"});
+        Init init({"exp(-(x^2+y^2+z^2)/(0.5^2))", "0.0"});
 
-        EulerIntegrator<RHS, Init> integrator(geom, {96, 96, 96}, rhs, init);
+        EulerIntegrator<RHS, Init> integrator(geom, {96, 96, 96}, std::move(rhs), std::move(init));
 
         integrator.initialise();
 
         amrex::AllPrint() << "Initialisation done." << std::endl;
 
-        size_t steps = 1e4;
-        size_t export_interval = 100;
+        size_t steps = 1e3;
+        size_t export_interval = 1e2;
+        integrator.configureExporter("raw/test", export_interval);
 
         auto start = std::chrono::system_clock::now();
 
@@ -68,7 +69,7 @@ int main(int argc, char** argv) {
                 amrex::AllPrint() << duration_since(start) << " Reached step " << step << std::endl;
             }
 
-            integrator.step(std::sqrt(0.5) * dx);
+            integrator.step(0.5 * dx / std::sqrt(3));
         }
     }
     amrex::Finalize();
