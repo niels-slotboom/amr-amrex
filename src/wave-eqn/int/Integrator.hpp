@@ -79,7 +79,7 @@ class Integrator {
         amrex::GpuArray<amrex::Real, 3> lo = geom.ProbLoArray();
 
         for (amrex::MFIter mfi(state_old); mfi.isValid(); ++mfi) {
-            auto box = mfi.validbox();
+            amrex::Box box = mfi.validbox();
             amrex::Array4<amrex::Real> arr = state_old.array(mfi);
             amrex::ParallelFor(box, [=] AMREX_GPU_DEVICE(int i, int j, int k) {
                 amrex::Real x = lo[0] + (i + 0.5) * dx[0];

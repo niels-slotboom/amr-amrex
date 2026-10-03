@@ -5,6 +5,7 @@
 #include "init/ConstInit.hpp"
 #include "init/FunctionInit.hpp"
 #include "int/EulerIntegrator.hpp"
+#include "rhs/HeatEqnRHS.hpp"
 #include "rhs/WaveEqnRHS.hpp"
 #include <iostream>
 
@@ -33,44 +34,84 @@ template <typename T> std::string duration_since(T start) {
     return ss.str();
 }
 
+void waveEqn() {
+    using RHS = WaveEqnRHS;
+    using Init = FunctionInit<RHS::ncomp>;
+
+    amrex::AllPrint() << "Setting up simulation..." << std::endl;
+
+    // set up domain
+    amrex::Box box({0, 0, 0}, {256, 256, 256});
+    amrex::RealBox rbox({-2.0, -2.0, -2.0}, {2.0, 2.0, 2.0});
+    int is_per[] = {1, 1, 1};
+    amrex::Geometry geom(box, &rbox, amrex::CoordSys::cartesian, is_per);
+
+    amrex::Real dx = geom.CellSize(0);
+
+    RHS rhs(dx);
+    Init init({"exp(-(x^2+y^2+z^2)/(0.5^2))", "0.0"});
+
+    EulerIntegrator<RHS, Init> integrator(geom, {96, 96, 96}, std::move(rhs), std::move(init));
+
+    integrator.initialise();
+
+    amrex::AllPrint() << "Initialisation done." << std::endl;
+
+    size_t steps = 1e3;
+    size_t export_interval = 1e2;
+    integrator.configureExporter("raw/test", export_interval);
+
+    auto start = std::chrono::system_clock::now();
+
+    for (size_t step = 0; step <= steps; ++step) {
+        if (step % export_interval == 0) {
+            amrex::AllPrint() << duration_since(start) << " Reached step " << step << std::endl;
+        }
+
+        integrator.step(0.5 * dx / std::sqrt(3));
+    }
+}
+
+void heatEqn() {
+    using RHS = HeatEqnRHS;
+    using Init = FunctionInit<RHS::ncomp>;
+
+    amrex::AllPrint() << "Setting up simulation..." << std::endl;
+
+    // set up domain
+    amrex::Box box({0, 0, 0}, {256, 256, 256});
+    amrex::RealBox rbox({-2.0, -2.0, -2.0}, {2.0, 2.0, 2.0});
+    int is_per[] = {1, 1, 1};
+    amrex::Geometry geom(box, &rbox, amrex::CoordSys::cartesian, is_per);
+
+    amrex::Real dx = geom.CellSize(0);
+
+    RHS rhs(dx);
+    Init init({"exp(-((x-1)^2+y^2+z^2)/(0.1^2)) + exp(-((x+1)^2+y^2+z^2)/(0.1^2))"});
+
+    EulerIntegrator<RHS, Init> integrator(geom, {96, 96, 96}, std::move(rhs), std::move(init));
+
+    integrator.initialise();
+
+    amrex::AllPrint() << "Initialisation done." << std::endl;
+
+    size_t steps = 1e5;
+    size_t export_interval = 1e2;
+    integrator.configureExporter("raw/test", export_interval);
+
+    auto start = std::chrono::system_clock::now();
+
+    for (size_t step = 0; step <= steps; ++step) {
+        if (step % export_interval == 0) {
+            amrex::AllPrint() << duration_since(start) << " Reached step " << step << std::endl;
+        }
+
+        integrator.step(dx * dx / 6.0);
+    }
+}
+
 int main(int argc, char** argv) {
     amrex::Initialize(argc, argv);
-    {
-        using RHS = WaveEqnRHS;
-        using Init = FunctionInit<RHS::ncomp>;
-
-        amrex::AllPrint() << "Setting up simulation..." << std::endl;
-
-        // set up domain
-        amrex::Box box({0, 0, 0}, {256, 256, 256});
-        amrex::RealBox rbox({-2.0, -2.0, -2.0}, {2.0, 2.0, 2.0});
-        int is_per[] = {1, 1, 1};
-        amrex::Geometry geom(box, &rbox, amrex::CoordSys::cartesian, is_per);
-
-        amrex::Real dx = geom.CellSize(0);
-
-        RHS rhs(dx);
-        Init init({"exp(-(x^2+y^2+z^2)/(0.5^2))", "0.0"});
-
-        EulerIntegrator<RHS, Init> integrator(geom, {96, 96, 96}, std::move(rhs), std::move(init));
-
-        integrator.initialise();
-
-        amrex::AllPrint() << "Initialisation done." << std::endl;
-
-        size_t steps = 1e3;
-        size_t export_interval = 1e2;
-        integrator.configureExporter("raw/test", export_interval);
-
-        auto start = std::chrono::system_clock::now();
-
-        for (size_t step = 0; step <= steps; ++step) {
-            if (step % export_interval == 0) {
-                amrex::AllPrint() << duration_since(start) << " Reached step " << step << std::endl;
-            }
-
-            integrator.step(0.5 * dx / std::sqrt(3));
-        }
-    }
+    heatEqn();
     amrex::Finalize();
 }
