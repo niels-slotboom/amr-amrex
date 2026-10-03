@@ -6,15 +6,17 @@
 template <typename RHSFunctor, typename InitFunctor>
     requires RHSConcept<RHSFunctor> && InitConcept<InitFunctor>
 class EulerIntegrator : public Integrator<RHSFunctor, InitFunctor> {
+    using Base = Integrator<RHSFunctor, InitFunctor>;
+
     // bring member constants into class scope
-    using Integrator<RHSFunctor, InitFunctor>::ncomp;
-    using Integrator<RHSFunctor, InitFunctor>::ngrow;
+    using Base::ncomp;
+    using Base::ngrow;
 
     // bring protected members into scope
-    using Integrator<RHSFunctor, InitFunctor>::state_old;
-    using Integrator<RHSFunctor, InitFunctor>::state_new;
-    using Integrator<RHSFunctor, InitFunctor>::rhs;
-    using Integrator<RHSFunctor, InitFunctor>::time;
+    using Base::rhs;
+    using Base::state_new;
+    using Base::state_old;
+    using Base::time;
 
   public:
     // Inherit constructor
