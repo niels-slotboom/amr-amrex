@@ -2,5 +2,7 @@
 /bin/
 /lib/
 /raw/
+/temp_pngs/
+/gif/
 *.png
 Backtrace.*
