@@ -3,6 +3,7 @@
 #include "AMReX_RealVect.H"
 #include "int/Integrator.hpp"
 
+// ϕ_tt = Δϕ - γ|∇ϕ|²ϕ_t
 struct NLGradDampWaveEqnRHS {
     static constexpr int ncomp = 2;
     static constexpr int ngrow = 1;

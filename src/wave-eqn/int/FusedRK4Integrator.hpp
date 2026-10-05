@@ -22,8 +22,8 @@ class FusedRK4Integrator : public Integrator<RHSFunctor, InitFunctor> {
   private: // coefficients
     static constexpr int stage_count = 4;
     static constexpr amrex::Array<amrex::Real, stage_count> a_fraction_arr{0.0, 0.5, 0.5, 1.0}; // arg offset coeffs
-    static constexpr amrex::Array<amrex::Real, stage_count> b_fraction_arr{1.0 / 3.0, 2.0 / 3.0, 2.0 / 3.0,
-                                                                           1.0 / 3.0}; // accumulation coeffs
+    static constexpr amrex::Array<amrex::Real, stage_count> b_fraction_arr{1.0 / 6.0, 1.0 / 3.0, 1.0 / 3.0,
+                                                                           1.0 / 6.0}; // accumulation coeffs
 
   public: // public interface
     FusedRK4Integrator() = delete;
