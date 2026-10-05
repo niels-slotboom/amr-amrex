@@ -37,7 +37,7 @@ template <typename T> std::string duration_since(T start) {
 }
 
 void waveEqn() {
-    using RHS = WaveEqnRHS;
+    using RHS = WaveEqnRHS<1>;
     using Init = FunctionInit<RHS::ncomp>;
 
     amrex::AllPrint() << "Setting up simulation..." << std::endl;
@@ -59,9 +59,9 @@ void waveEqn() {
 
     amrex::AllPrint() << "Initialisation done." << std::endl;
 
-    size_t steps = 800;
-    size_t export_interval = 2;
-    integrator.configureExporter("raw/test", export_interval);
+    size_t steps = 1000;
+    size_t export_interval = 100;
+    // integrator.configureExporter("raw/test", export_interval);
 
     auto start = std::chrono::system_clock::now();
 
@@ -152,6 +152,6 @@ void heatEqn() {
 
 int main(int argc, char** argv) {
     amrex::Initialize(argc, argv);
-    nonLinWaveEqn();
+    waveEqn();
     amrex::Finalize();
 }

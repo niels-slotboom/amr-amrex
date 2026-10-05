@@ -1,10 +1,12 @@
 #pragma once
 #include "AMReX.H"
 #include "int/Integrator.hpp"
+#include "util/stencil.hpp"
 
-struct WaveEqnRHS {
+template <int ngrow_> struct WaveEqnRHS {
+    static_assert(ngrow_ > 0, "ngrow must be positive");
     static constexpr int ncomp = 2;
-    static constexpr int ngrow = 1;
+    static constexpr int ngrow = ngrow_;
 
     static inline const amrex::Vector<std::string> comp_names = {"phi", "dphi_dt"};
 
@@ -23,11 +25,8 @@ struct WaveEqnRHS {
             return arr(i, j, k, Component::dphi_dt);
 
         case Component::dphi_dt: {
-            amrex::Real stencil = -6.0 * arr(i, j, k, Component::phi);
-            stencil += arr(i + 1, j, k, Component::phi) + arr(i - 1, j, k, Component::phi);
-            stencil += arr(i, j + 1, k, Component::phi) + arr(i, j - 1, k, Component::phi);
-            stencil += arr(i, j, k + 1, Component::phi) + arr(i, j, k - 1, Component::phi);
-            return inv_dx_sq * stencil;
+            using namespace stencil;
+            return inv_dx_sq * laplacian<ngrow>(i, j, k, Component::phi, arr);
         }
 
         default:
@@ -36,4 +35,4 @@ struct WaveEqnRHS {
     }
 };
 
-static_assert(RHSConcept<WaveEqnRHS>);
+static_assert(RHSConcept<WaveEqnRHS<1>>);
