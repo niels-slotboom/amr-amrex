@@ -49,7 +49,7 @@ class RK4Integrator : public Integrator<RHSFunctor, InitFunctor> {
 
         if constexpr (!is_first) { // finalise arg for rhs evaluation
             std::swap(arg_next, arg);
-            arg.FillBoundary();
+            arg.FillBoundary(geom.periodicity());
         }
 
         RHSFunctor rhs_ = rhs; // local copy for lambda capture
