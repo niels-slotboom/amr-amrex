@@ -5,7 +5,6 @@
 #include "init/ConstInit.hpp"
 #include "init/FunctionInit.hpp"
 #include "int/EulerIntegrator.hpp"
-#include "int/FusedRK4Integrator.hpp"
 #include "int/RK4Integrator.hpp"
 #include "rhs/HeatEqnRHS.hpp"
 #include "rhs/NLGradDampWaveEqnRHS.hpp"
@@ -92,7 +91,7 @@ void nonLinWaveEqn() {
     RHS rhs(dx, 0.1);
     Init init({"exp(-(x^2+y^2+z^2)/(0.4^2)) * cos(30.0*x)",
                "exp(-(x^2+y^2+z^2)/(0.4^2)) * ((2.0/0.4^2) * x * cos(30.0*x) + 30.0 * sin(30.0*x))"});
-    FusedRK4Integrator<RHS, Init> integrator(geom, {128, 128, 128}, std::move(rhs), std::move(init));
+    RK4Integrator<RHS, Init> integrator(geom, {128, 128, 128}, std::move(rhs), std::move(init));
 
     integrator.initialise();
 

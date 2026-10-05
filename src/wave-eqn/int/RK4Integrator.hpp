@@ -1,112 +1,91 @@
 #pragma once
-#include "AMReX_GpuDevice.H"
-#include "Integrator.hpp"
-
-#pragma once
-#include "AMReX_Array4.H"
 #include "AMReX_MFIter.H"
-#include "int/Integrator.hpp"
+#include "Integrator.hpp"
 
 template <typename RHSFunctor, typename InitFunctor>
     requires RHSConcept<RHSFunctor> && InitConcept<InitFunctor>
 class RK4Integrator : public Integrator<RHSFunctor, InitFunctor> {
     using Base = Integrator<RHSFunctor, InitFunctor>;
-    // bring member constants into class scope
-    using Base::ncomp;
-    using Base::ngrow;
 
-    // bring protected members into scope
+  private: // import base class members to scope
     using Base::ba;
     using Base::dm;
     using Base::geom;
+    using Base::ncomp;
+    using Base::ngrow;
     using Base::rhs;
     using Base::state_new;
     using Base::state_old;
+    using Base::steps;
     using Base::time;
 
-  public:
+  private: // coefficients
+    static constexpr int stage_count = 4;
+    static constexpr amrex::Array<amrex::Real, stage_count> a_fraction_arr{0.0, 0.5, 0.5, 1.0}; // arg offset coeffs
+    static constexpr amrex::Array<amrex::Real, stage_count> b_fraction_arr{1.0 / 6.0, 1.0 / 3.0, 1.0 / 3.0,
+                                                                           1.0 / 6.0}; // accumulation coeffs
+
+  public: // public interface
     RK4Integrator() = delete;
-
-    // Forward constructor
     RK4Integrator(amrex::Geometry geom_, const amrex::IntVect& block_size, RHSFunctor rhs_, InitFunctor init_)
-        : Base(std::move(geom_), block_size, std::move(rhs_), std::move(init_)), init(Base::state_old),
-          acc(Base::state_new), arg(ba, dm, ncomp, ngrow), stage(ba, dm, ncomp, ngrow) {}
+        : Base(std::move(geom_), block_size, std::move(rhs_), std::move(init_)), init(state_old), acc(state_new),
+          arg(ba, dm, ncomp, ngrow), arg_next(ba, dm, ncomp, ngrow) {}
 
-    ~RK4Integrator() = default;
-
-  protected:
     void computeNewState(amrex::Real delta_time) override {
-        amrex::Real dt = delta_time;
-        amrex::Real dt_2 = (1.0 / 2.0) * dt;
-        amrex::Real dt_3 = (1.0 / 3.0) * dt;
-        amrex::Real dt_6 = (1.0 / 6.0) * dt;
-
-        // k1 eval + accumulation
-        computeStage(time, 0.0, true); // stage <- F(init)
-                                       //     ==> stage = k1
-        accumulateStage(dt_6, true);   // acc   <- init + s/6 * stage
-                                       //     ==> acc = init + s/6 * k1
-
-        // k2 eval + accumulation
-        computeStage(time + dt_2, dt_2, false); // stage <- F(init + s/2 * stage)
-                                                //     ==> stage = k2
-        accumulateStage(dt_3, false);           // acc   <- acc + s/3 * stage
-                                                //     ==> acc = init + s/6 * (k1 + 2 * k2)
-
-        // k3 eval + accumulation
-        computeStage(time + dt_2, dt_2, false); // stage <- F(init + s/2 * stage)
-                                                //     ==> stage = k3
-        accumulateStage(dt_3, false);           // acc   <- acc + s/3 * stage
-                                                //     ==> acc = init + s/6 * (k1 + 2 * k2 + 2 * k3)
-
-        // k4 eval + accumulation
-        computeStage(time + dt, dt, false); // stage <- F(init + s * stage)
-                                            //     ==> stage = k4
-        accumulateStage(dt_6, false);       // acc   <- acc + s/6 * stage
-                                            //     ==> acc = init + s/6 * (k1 + 2 * k2 + 2 * k3 + k4)
+        runStage<0>(delta_time);
+        runStage<1>(delta_time);
+        runStage<2>(delta_time);
+        runStage<3>(delta_time);
     }
 
-  private:
-    void computeStage(amrex::Real eval_time, amrex::Real coeff, bool is_first) {
-        // --- prepare arg for stage evaluation ---
-        const amrex::MultiFab* arg_for_eval_ptr = &init; // if is_first, otherwise will get overwritten'
+  private: // fused stage kernel
+    template <int stage_number> void runStage(amrex::Real dt) {
+        constexpr bool is_first = (stage_number == 0);
+        constexpr bool is_last = (stage_number == (stage_count - 1));
 
-        if (!is_first) { // if not the first stage, so RHS arg needs to be computed into arg
-                         // arg = init + coeff * stage (previous)
-            amrex::MultiFab::LinComb(arg, 1.0, init, 0, coeff, stage, 0, 0, ncomp, 0);
-            arg.FillBoundary(geom.periodicity());
-            arg_for_eval_ptr = &arg;
+        amrex::Real a_next = dt * a_fraction_arr[(stage_number + 1) % stage_count];
+        amrex::Real time_arg = time + dt * a_fraction_arr[stage_number];
+        amrex::Real b = dt * b_fraction_arr[stage_number];
+
+        if constexpr (!is_first) { // finalise arg for rhs evaluation
+            std::swap(arg_next, arg);
+            arg.FillBoundary();
         }
-        const amrex::MultiFab& arg_for_eval = *arg_for_eval_ptr; // lock into a reference for cleaner code from now on
 
-        // --- evaluate stage ---
         RHSFunctor rhs_ = rhs; // local copy for lambda capture
-        for (amrex::MFIter mfi(stage); mfi.isValid(); ++mfi) {
-            amrex::Box box = mfi.validbox();
-            amrex::Array4<amrex::Real> arr_stage = stage.array(mfi);
-            amrex::Array4<const amrex::Real> arr_arg = arg_for_eval.const_array(mfi);
 
+        for (amrex::MFIter mfi(init); mfi.isValid(); ++mfi) {
+            amrex::Box box = mfi.validbox();
+            amrex::Array4<const amrex::Real> init_arr = init.const_array(mfi);
+            amrex::Array4<amrex::Real> acc_arr = acc.array(mfi);
+            amrex::Array4<const amrex::Real> arg_arr = arg.const_array(mfi);
+            amrex::Array4<amrex::Real> arg_next_arr = arg_next.array(mfi);
             amrex::ParallelFor(box, [=] AMREX_GPU_DEVICE(int i, int j, int k) {
                 for (int comp = 0; comp < ncomp; ++comp) {
-                    arr_stage(i, j, k, comp) = rhs_(i, j, k, comp, eval_time, arr_arg);
+                    // compute stage k_i for current voxel and accumulate
+                    amrex::Real stage;
+                    if constexpr (is_first) {
+                        stage = rhs_(i, j, k, comp, time_arg, init_arr);
+                        acc_arr(i, j, k, comp) = init_arr(i, j, k, comp) + b * stage;
+                    } else {
+                        stage = rhs_(i, j, k, comp, time_arg, arg_arr);
+                        acc_arr(i, j, k, comp) += b * stage;
+                    }
+
+                    // prepare arg_next if there is a next stage
+                    if constexpr (!is_last) {
+                        arg_next_arr(i, j, k, comp) = init_arr(i, j, k, comp) + a_next * stage;
+                    }
                 }
             });
         }
     }
 
-    void accumulateStage(amrex::Real coeff, bool is_first) {
-        if (is_first) // acc = init + coeff * stage
-            amrex::MultiFab::LinComb(acc, 1.0, init, 0, coeff, stage, 0, 0, ncomp, 0);
-        else // acc = acc + coeff * stage
-            amrex::MultiFab::LinComb(acc, 1.0, acc, 0, coeff, stage, 0, 0, ncomp, 0);
-    }
-
-  private: // total of four registers required for RK4:
-    // base class MultiFab name aliases
-    const amrex::MultiFab& init; ///< Reference to Integrator::state_old
-    amrex::MultiFab& acc;        ///< Reference to Integrator::state_new
-
-    // implementation-specific temporary registers
-    amrex::MultiFab arg;   ///< Temporary storage for RHS evaluation arguments
-    amrex::MultiFab stage; ///< Last stage evaluation
+  private: // class members
+    // aliases for existing base class registers
+    const amrex::MultiFab& init; ///< Alias for state_old, holds previous state
+    amrex::MultiFab& acc;        ///< Alias for state_new, holds (previous state + stages)
+    // temporary registers for more efficient evaluation
+    amrex::MultiFab arg;      ///< Linear combination of arguments for the current RHS eval
+    amrex::MultiFab arg_next; ///< Linear combination of arguments for the next RHS eval
 };
