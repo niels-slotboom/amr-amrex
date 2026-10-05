@@ -7,6 +7,8 @@
 // it is assumed that dx = dy = dz, i.e. that the grid spacing its the same in all directions
 namespace stencil {
 
+enum dir : int { x = 0, y = 1, z = 2 };
+
 template <int ngrow> inline constexpr bool always_false = false; // needed for delayed static_assert(false)
 
 // --- PARTIAL DERIVATIVES --- (coefficients taken from https://en.wikipedia.org/wiki/Finite_difference_coefficient)
@@ -17,7 +19,8 @@ AMREX_FORCE_INLINE AMREX_GPU_HOST_DEVICE amrex::Real derivative(int i, int j, in
                                                                 const amrex::Array4<const amrex::Real>& arr);
 
 template <int ngrow, int... Dirs> struct derivative_impl {
-    static_assert(always_false<ngrow>, "stencil::derivative is not implemented for requested ngrow");
+    static_assert(always_false<ngrow>,
+                  "stencil::derivative is not implemented for requested ngrow and/or direction count");
     AMREX_FORCE_INLINE AMREX_GPU_HOST_DEVICE static amrex::Real eval(int i, int j, int k, int comp,
                                                                      const amrex::Array4<const amrex::Real>& arr) {
         return 0.0;
@@ -143,9 +146,9 @@ template <int ngrow>
 AMREX_FORCE_INLINE AMREX_GPU_HOST_DEVICE amrex::GpuArray<amrex::Real, 3>
 gradient(int i, int j, int k, int comp, const amrex::Array4<const amrex::Real>& arr) {
     return {
-        derivative<ngrow, 0>(i, j, k, comp, arr),
-        derivative<ngrow, 1>(i, j, k, comp, arr),
-        derivative<ngrow, 2>(i, j, k, comp, arr),
+        derivative<ngrow, dir::x>(i, j, k, comp, arr),
+        derivative<ngrow, dir::y>(i, j, k, comp, arr),
+        derivative<ngrow, dir::z>(i, j, k, comp, arr),
     };
 }
 
@@ -161,8 +164,9 @@ AMREX_FORCE_INLINE AMREX_GPU_HOST_DEVICE amrex::Real gradient_squared(int i, int
 template <int ngrow>
 AMREX_FORCE_INLINE AMREX_GPU_HOST_DEVICE amrex::Real laplacian(int i, int j, int k, int comp,
                                                                const amrex::Array4<const amrex::Real>& arr) {
-    return derivative<ngrow, 0, 0>(i, j, k, comp, arr) + derivative<ngrow, 1, 1>(i, j, k, comp, arr) +
-           derivative<ngrow, 2, 2>(i, j, k, comp, arr);
+    return derivative<ngrow, dir::x, dir::x>(i, j, k, comp, arr) +
+           derivative<ngrow, dir::y, dir::y>(i, j, k, comp, arr) +
+           derivative<ngrow, dir::z, dir::z>(i, j, k, comp, arr);
 }
 
 // --- HESSIAN ---
@@ -171,13 +175,13 @@ AMREX_FORCE_INLINE AMREX_GPU_HOST_DEVICE amrex::Array2D<amrex::Real, 0, 2, 0, 2>
 hessian(int i, int j, int k, int comp, const amrex::Array4<const amrex::Real>& arr) {
     amrex::Array2D<amrex::Real, 0, 2, 0, 2> H;
     // diagonal
-    H(0, 0) = derivative<ngrow, 0, 0>(i, j, k, comp, arr);
-    H(1, 1) = derivative<ngrow, 1, 1>(i, j, k, comp, arr);
-    H(2, 2) = derivative<ngrow, 2, 2>(i, j, k, comp, arr);
+    H(0, 0) = derivative<ngrow, dir::x, dir::x>(i, j, k, comp, arr);
+    H(1, 1) = derivative<ngrow, dir::y, dir::y>(i, j, k, comp, arr);
+    H(2, 2) = derivative<ngrow, dir::z, dir::z>(i, j, k, comp, arr);
     // off-diagonal
-    H(0, 1) = H(1, 0) = derivative<ngrow, 0, 1>(i, j, k, comp, arr);
-    H(0, 2) = H(2, 0) = derivative<ngrow, 0, 2>(i, j, k, comp, arr);
-    H(1, 2) = H(2, 1) = derivative<ngrow, 1, 2>(i, j, k, comp, arr);
+    H(0, 1) = H(1, 0) = derivative<ngrow, dir::x, dir::y>(i, j, k, comp, arr);
+    H(0, 2) = H(2, 0) = derivative<ngrow, dir::x, dir::z>(i, j, k, comp, arr);
+    H(1, 2) = H(2, 1) = derivative<ngrow, dir::y, dir::z>(i, j, k, comp, arr);
 
     return H;
 }
