@@ -3,143 +3,251 @@
 #include <AMReX_Array.H>
 #include <AMReX_Array4.H>
 
-// any stencil is meant to be multiplied by 1/dx^k with k the order of the differential operator
-// it is assumed that dx = dy = dz, i.e. that the grid spacing its the same in all directions
+/**
+ * Defines compile-time resolved derivative stencils (up to third derivatives, arbitrary stencil width).
+ * Note: It is assumed that dx = dy = dz, and multiplication of results by 1/dx^k with k the derivative order is UP TO
+ * THE USER.
+ */
 namespace stencil {
-
+// Directions (x=0, y=1, z=2)
 enum dir : int { x = 0, y = 1, z = 2 };
 
-template <int ngrow> inline constexpr bool always_false = false; // needed for delayed static_assert(false)
+// constexpr math (to be evaluated at compile time)
+namespace cexprmath {
+// n! (64-bit to prevent overflow for n > 12)
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE constexpr std::int64_t factorial(int n) {
+    std::int64_t res = 1;
+    for (int i = 2; i <= n; ++i)
+        res *= i;
+    return res;
+}
 
-// --- PARTIAL DERIVATIVES --- (coefficients taken from https://en.wikipedia.org/wiki/Finite_difference_coefficient)
+// n choose k
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE constexpr std::int64_t binom(int n, int k) {
+    if (k < 0 || k > n)
+        return 0;
+    if (k == 0 || k == n)
+        return 1;
+    if (k > n / 2)
+        k = n - k;
 
-// forward declaration of interface function
+    std::int64_t res = 1;
+    for (int i = 1; i <= k; ++i) {
+        res = res * (n - i + 1) / i;
+    }
+    return res;
+}
+
+// n^k
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE constexpr std::int64_t power(std::int64_t n, int k) {
+    std::int64_t result = 1;
+    while (k > 0) {
+        if (k & 1)
+            result *= n;
+        n *= n;
+        k >>= 1;
+    }
+    return result;
+}
+
+// (-1)^k
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE constexpr int sign(int k) { return (k & 1) ? -1 : 1; }
+
+// H_(n,m) = sum_(k=1)^n 1/k^m
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE constexpr double generalised_harmonic_number(int n, int m) {
+    double sum = 0.0;
+    for (int k = 1; k <= n; k++) {
+        sum += 1.0 / static_cast<double>(power(k, m));
+    }
+    return sum;
+}
+} // namespace cexprmath
+
+// weights for pure/unmixed derivatives
+namespace weights {
+// weights for first derivative stencil with width 2*ngrow + 1, at offset away from center point
+template <int ngrow> AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE constexpr amrex::Real first(int offset) {
+    static_assert(ngrow > 0, "ngrow needs to be at least 1 to evaluate first derivatives");
+
+    using namespace cexprmath;
+    int n = ngrow;
+    int k = offset;
+    int k_abs = (k > 0) ? k : -k;
+
+    if (offset == 0)
+        return 0;
+
+    std::int64_t num = sign(k_abs + 1) * power(factorial(n), 2);
+    std::int64_t denom = k_abs * factorial(n - k_abs) * factorial(n + k_abs);
+    double w = static_cast<double>(num) / static_cast<double>(denom);
+    return static_cast<amrex::Real>((k > 0) ? w : -w);
+}
+
+// weights for second derivative stencil with width 2*ngrow + 1, at offset away from center point
+template <int ngrow> AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE constexpr amrex::Real second(int offset) {
+    static_assert(ngrow > 0, "ngrow needs to be at least 1 to evaluate second derivatives");
+
+    using namespace cexprmath;
+    int n = ngrow;
+    int k = (offset > 0) ? offset : -offset;
+
+    if (offset == 0)
+        return -2.0 * generalised_harmonic_number(n, 2);
+
+    std::int64_t num = 2 * sign(k + 1) * power(factorial(n), 2);
+    std::int64_t denom = k * k * factorial(n - k) * factorial(n + k);
+    return static_cast<amrex::Real>(static_cast<double>(num) / static_cast<double>(denom));
+}
+
+// weights for third derivative stencil with width 2*ngrow + 1, at offset away from center point
+template <int ngrow> AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE constexpr amrex::Real third(int offset) {
+    static_assert(ngrow > 1, "ngrow needs to be at least 2 to evaluate third derivatives");
+
+    using namespace cexprmath;
+    int n = ngrow;
+    int k = offset;
+    int k_abs = (k > 0) ? k : -k;
+
+    if (offset == 0)
+        return 0;
+
+    std::int64_t num = 3 * sign(k_abs + 1) * power(factorial(n), 2);
+    std::int64_t denom = power(k_abs, 3) * factorial(n - k_abs) * factorial(n + k_abs);
+    double w = ((1.0 - 2.0 * static_cast<double>(k_abs * k_abs) * generalised_harmonic_number(n, 2)) *
+                static_cast<double>(num) / static_cast<double>(denom));
+    return static_cast<amrex::Real>((k > 0) ? w : -w);
+}
+} // namespace weights
+
+// --- --- --- FUNDAMENTAL DERIVATIVE STENCIL TEMPLATES --- --- ---
+template <int ngrow> constexpr bool always_false = false;
+
 template <int ngrow, int... Dirs>
-AMREX_FORCE_INLINE AMREX_GPU_HOST_DEVICE amrex::Real derivative(int i, int j, int k, int comp,
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE amrex::Real derivative(int i, int j, int k, int comp,
                                                                 const amrex::Array4<const amrex::Real>& arr);
 
+// base template for derivative_impl struct
 template <int ngrow, int... Dirs> struct derivative_impl {
     static_assert(always_false<ngrow>,
-                  "stencil::derivative is not implemented for requested ngrow and/or direction count");
-    AMREX_FORCE_INLINE AMREX_GPU_HOST_DEVICE static amrex::Real eval(int i, int j, int k, int comp,
+                  "No stencil::derivative implementation available for requested template parameters");
+    static AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE amrex::Real eval(int i, int j, int k, int comp,
                                                                      const amrex::Array4<const amrex::Real>& arr) {
-        return 0.0;
+        return 0;
     }
 };
 
-// first derivatives
-template <int ngrow, int dir0> struct derivative_impl<ngrow, dir0> {
-    static_assert(dir0 >= 0 && dir0 < 3, "stencil::derivative directions must be 0,1,2");
-    AMREX_FORCE_INLINE AMREX_GPU_HOST_DEVICE static amrex::Real eval(int i, int j, int k, int comp,
+// --- FIRST DERIVATIVES ---
+template <int ngrow, int dir> struct derivative_impl<ngrow, dir> {
+    static AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE amrex::Real eval(int i, int j, int k, int comp,
                                                                      const amrex::Array4<const amrex::Real>& arr) {
-        constexpr int i_offset = (dir0 == 0) ? 1 : 0;
-        constexpr int j_offset = (dir0 == 1) ? 1 : 0;
-        constexpr int k_offset = (dir0 == 2) ? 1 : 0;
+        constexpr int i_offset = (dir == stencil::dir::x);
+        constexpr int j_offset = (dir == stencil::dir::y);
+        constexpr int k_offset = (dir == stencil::dir::z);
 
-        std::array<amrex::Real, ngrow> diffs;
-        diffs[0] =
-            arr(i + i_offset, j + j_offset, k + k_offset, comp) - arr(i - i_offset, j - j_offset, k - k_offset, comp);
-
-        if constexpr (ngrow > 1)
-            diffs[1] = arr(i + 2 * i_offset, j + 2 * j_offset, k + 2 * k_offset, comp) -
-                       arr(i - 2 * i_offset, j - 2 * j_offset, k - 2 * k_offset, comp);
-        if constexpr (ngrow > 2)
-            diffs[2] = arr(i + 3 * i_offset, j + 3 * j_offset, k + 3 * k_offset, comp) -
-                       arr(i - 3 * i_offset, j - 3 * j_offset, k - 3 * k_offset, comp);
-        if constexpr (ngrow > 3)
-            diffs[3] = arr(i + 4 * i_offset, j + 4 * j_offset, k + 4 * k_offset, comp) -
-                       arr(i - 4 * i_offset, j - 4 * j_offset, k - 4 * k_offset, comp);
-
-        if constexpr (ngrow == 1) {
-            return (1.0 / 2.0) * diffs[0];
-        } else if constexpr (ngrow == 2) {
-            return (2.0 / 3.0) * diffs[0] + (-1.0 / 12.0) * diffs[1];
-        } else if constexpr (ngrow == 3) {
-            return (3.0 / 4.0) * diffs[0] + (-3.0 / 20.0) * diffs[1] + (1.0 / 60.0) * diffs[2];
-        } else if constexpr (ngrow == 4) {
-            return (4.0 / 5.0) * diffs[0] + (-1.0 / 5.0) * diffs[1] + (4.0 / 105.0) * diffs[2] +
-                   (-1.0 / 280.0) * diffs[3];
-        } else {
-            static_assert(always_false<ngrow>,
-                          "stencil::derivative: first derivative not implemented for requested ngrow");
-            return 0.0;
+        amrex::Real result = 0.0;
+#pragma unroll
+        for (int s = 1; s <= ngrow; ++s) {
+            result += weights::first<ngrow>(s) * (arr(i + s * i_offset, j + s * j_offset, k + s * k_offset, comp) -
+                                                  arr(i - s * i_offset, j - s * j_offset, k - s * k_offset, comp));
         }
+        return result;
     }
 };
 
-// second derivatives
+// --- SECOND DERIVATIVES ---
 template <int ngrow, int dir0, int dir1> struct derivative_impl<ngrow, dir0, dir1> {
-    AMREX_FORCE_INLINE AMREX_GPU_HOST_DEVICE static amrex::Real eval(int i, int j, int k, int comp,
+    static AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE amrex::Real eval(int i, int j, int k, int comp,
                                                                      const amrex::Array4<const amrex::Real>& arr) {
-        constexpr int i_offset = (dir0 == 0) ? 1 : 0;
-        constexpr int j_offset = (dir0 == 1) ? 1 : 0;
-        constexpr int k_offset = (dir0 == 2) ? 1 : 0;
-        if constexpr (dir0 == dir1) { // both derivatives in same direction
-            std::array<amrex::Real, ngrow + 1> terms;
-            terms[0] = arr(i, j, k, comp);
-            terms[1] = arr(i + i_offset, j + j_offset, k + k_offset, comp) +
-                       arr(i - i_offset, j - j_offset, k - k_offset, comp);
-            if constexpr (ngrow > 1)
-                terms[2] = arr(i + 2 * i_offset, j + 2 * j_offset, k + 2 * k_offset, comp) +
-                           arr(i - 2 * i_offset, j - 2 * j_offset, k - 2 * k_offset, comp);
-            if constexpr (ngrow > 2)
-                terms[3] = arr(i + 3 * i_offset, j + 3 * j_offset, k + 3 * k_offset, comp) +
-                           arr(i - 3 * i_offset, j - 3 * j_offset, k - 3 * k_offset, comp);
-            if constexpr (ngrow > 3)
-                terms[4] = arr(i + 4 * i_offset, j + 4 * j_offset, k + 4 * k_offset, comp) +
-                           arr(i - 4 * i_offset, j - 4 * j_offset, k - 4 * k_offset, comp);
-            if constexpr (ngrow == 1) {
-                return -2.0 * terms[0] + terms[1];
-            } else if constexpr (ngrow == 2) {
-                return (-5.0 / 2.0) * terms[0] + (4.0 / 3.0) * terms[1] + (-1.0 / 12.0) * terms[2];
-            } else if constexpr (ngrow == 3) {
-                return (-49.0 / 18.0) * terms[0] + (3.0 / 2.0) * terms[1] + (-3.0 / 20.0) * terms[2] +
-                       (1.0 / 90.0) * terms[3];
-            } else if constexpr (ngrow == 4) {
-                return (-205.0 / 72.0) * terms[0] + (8.0 / 5.0) * terms[1] + (-1.0 / 5.0) * terms[2] +
-                       (8.0 / 315.0) * terms[3] + (-1.0 / 560.0) * terms[4];
-            } else {
-                static_assert(always_false<ngrow>,
-                              "stencil::derivative: unmixed second derivative not implemented for requested ngrow");
-                return 0.0;
+        if constexpr (dir0 == dir1) { // unmixed derivative
+            constexpr int i_offset = (dir0 == stencil::dir::x);
+            constexpr int j_offset = (dir0 == stencil::dir::y);
+            constexpr int k_offset = (dir0 == stencil::dir::z);
+
+            amrex::Real result = weights::second<ngrow>(0) * arr(i, j, k, comp);
+#pragma unroll
+            for (int s = 1; s <= ngrow; ++s) {
+                result += weights::second<ngrow>(s) * (arr(i + s * i_offset, j + s * j_offset, k + s * k_offset, comp) +
+                                                       arr(i - s * i_offset, j - s * j_offset, k - s * k_offset, comp));
             }
-        } else { // mixed derivatives
-            std::array<amrex::Real, ngrow> terms;
-            terms[0] = derivative<ngrow, dir1>(i + i_offset, j + j_offset, k + k_offset, comp, arr) -
-                       derivative<ngrow, dir1>(i - i_offset, j - j_offset, k - k_offset, comp, arr);
-            if constexpr (ngrow > 1)
-                terms[1] = derivative<ngrow, dir1>(i + 2 * i_offset, j + 2 * j_offset, k + 2 * k_offset, comp, arr) -
-                           derivative<ngrow, dir1>(i - 2 * i_offset, j - 2 * j_offset, k - 2 * k_offset, comp, arr);
-            if constexpr (ngrow > 2)
-                terms[2] = derivative<ngrow, dir1>(i + 3 * i_offset, j + 3 * j_offset, k + 3 * k_offset, comp, arr) -
-                           derivative<ngrow, dir1>(i - 3 * i_offset, j - 3 * j_offset, k - 3 * k_offset, comp, arr);
-            if constexpr (ngrow > 3)
-                terms[3] = derivative<ngrow, dir1>(i + 4 * i_offset, j + 4 * j_offset, k + 4 * k_offset, comp, arr) -
-                           derivative<ngrow, dir1>(i - 4 * i_offset, j - 4 * j_offset, k - 4 * k_offset, comp, arr);
-            if constexpr (ngrow == 1) {
-                return (1.0 / 2.0) * terms[0];
-            } else if constexpr (ngrow == 2) {
-                return (2.0 / 3.0) * terms[0] + (-1.0 / 12.0) * terms[1];
-            } else if constexpr (ngrow == 3) {
-                return (3.0 / 4.0) * terms[0] + (-3.0 / 20.0) * terms[1] + (1.0 / 60.0) * terms[2];
-            } else if constexpr (ngrow == 4) {
-                return (4.0 / 5.0) * terms[0] + (-1.0 / 5.0) * terms[1] + (4.0 / 105.0) * terms[2] +
-                       (-1.0 / 280.0) * terms[3];
-            } else {
-                static_assert(always_false<ngrow>,
-                              "stencil::derivative: mixed second derivative not implemented for requested ngrow");
-                return 0.0;
+            return result;
+        } else {
+            constexpr int i_offset = (dir0 == stencil::dir::x);
+            constexpr int j_offset = (dir0 == stencil::dir::y);
+            constexpr int k_offset = (dir0 == stencil::dir::z);
+
+            amrex::Real result = 0.0;
+#pragma unroll
+            for (int s = 1; s <= ngrow; ++s) {
+                result += weights::first<ngrow>(s) *
+                          (derivative<ngrow, dir1>(i + s * i_offset, j + s * j_offset, k + s * k_offset, comp, arr) -
+                           derivative<ngrow, dir1>(i - s * i_offset, j - s * j_offset, k - s * k_offset, comp, arr));
+            }
+            return result;
+        }
+    }
+};
+
+// --- THIRD DERIVATIVES ---
+template <int ngrow, int dir0, int dir1, int dir2> struct derivative_impl<ngrow, dir0, dir1, dir2> {
+    static AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE amrex::Real eval(int i, int j, int k, int comp,
+                                                                     const amrex::Array4<const amrex::Real>& arr) {
+        if constexpr (dir0 == dir1 && dir1 == dir2) { // unmixed derivative
+            constexpr int i_offset = (dir0 == stencil::dir::x);
+            constexpr int j_offset = (dir0 == stencil::dir::y);
+            constexpr int k_offset = (dir0 == stencil::dir::z);
+
+            amrex::Real result = 0.0;
+#pragma unroll
+            for (int s = 1; s <= ngrow; ++s) {
+                result += weights::third<ngrow>(s) * (arr(i + s * i_offset, j + s * j_offset, k + s * k_offset, comp) -
+                                                      arr(i - s * i_offset, j - s * j_offset, k - s * k_offset, comp));
+            }
+            return result;
+        } else if constexpr (dir0 == dir1 || dir0 == dir2 ||
+                             dir1 == dir2) { // derivative like xxy, two in the same direction
+            constexpr std::pair<int, int> udirs =
+                (dir0 == dir1) ? std::pair<int, int>{dir2, dir0} : std::pair<int, int>{dir0, dir1};
+            // udirs.first is the single derivative, udirs.second the double derivative
+            constexpr int i_offset = (udirs.first == stencil::dir::x);
+            constexpr int j_offset = (udirs.first == stencil::dir::y);
+            constexpr int k_offset = (udirs.first == stencil::dir::z);
+            // hence take a first derivative along udirs.first of derivative<ngrow,udirs.second,udirs.second>(...)
+            amrex::Real result = 0.0;
+#pragma unroll
+            for (int s = 1; s <= ngrow; ++s) {
+                result += weights::first<ngrow>(s) *
+                          (deritative<ngrow, udirs.second, udirs.second>(i + s * i_offset, j + s * j_offset,
+                                                                         k + s * k_offset, comp, arr) -
+                           deritative<ngrow, udirs.second, udirs.second>(i - s * i_offset, j - s * j_offset,
+                                                                         k - s * k_offset, comp, arr));
+            }
+            return result;
+        } else {
+            constexpr int i_offset = (dir0 == stencil::dir::x);
+            constexpr int j_offset = (dir0 == stencil::dir::y);
+            constexpr int k_offset = (dir0 == stencil::dir::z);
+
+            amrex::Real result = 0.0;
+#pragma unroll
+            for (int s = 1; s <= ngrow; ++s) {
+                result +=
+                    weights::first<ngrow>(s) *
+                    (derivative<ngrow, dir1, dir2>(i + s * i_offset, j + s * j_offset, k + s * k_offset, comp, arr) -
+                     derivative<ngrow, dir1, dir2>(i - s * i_offset, j - s * j_offset, k - s * k_offset, comp, arr));
             }
         }
-    };
+    }
 };
 
 template <int ngrow, int... Dirs>
-AMREX_FORCE_INLINE AMREX_GPU_HOST_DEVICE amrex::Real derivative(int i, int j, int k, int comp,
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE amrex::Real derivative(int i, int j, int k, int comp,
                                                                 const amrex::Array4<const amrex::Real>& arr) {
-    static_assert(ngrow > 0, "stencil::derivative requires ngrow of at least 1");
+    static_assert(((Dirs >= 0 && Dirs <= 2) && ...),
+                  "All direction template parameters must be between 0 and 2 (inclusive)");
     return derivative_impl<ngrow, Dirs...>::eval(i, j, k, comp, arr);
 }
+
+// --- --- --- SPECIAL OPERATORS DERIVED FROM BASIC DERIVATIVE --- --- ---
 
 // --- GRADIENT ---
 template <int ngrow>
@@ -186,6 +294,5 @@ hessian(int i, int j, int k, int comp, const amrex::Array4<const amrex::Real>& a
     return H;
 }
 
-// --- KREISS-OLIGER ---
-// TODO: Implement
-} // namespace stencil
+// --- --- --- KREISS-OLIGER DISSIPATION TERMS --- --- ---
+}; // namespace stencil
