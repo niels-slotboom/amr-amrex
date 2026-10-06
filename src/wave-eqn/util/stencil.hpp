@@ -295,4 +295,23 @@ hessian(int i, int j, int k, int comp, const amrex::Array4<const amrex::Real>& a
 }
 
 // --- --- --- KREISS-OLIGER DISSIPATION TERMS --- --- ---
+template <int ngrow, int dir>
+AMREX_FORCE_INLINE AMREX_GPU_HOST_DEVICE amrex::Real kreiss_oliger(int i, int j, int k, int comp,
+                                                                   const amrex::Array4<const amrex::Real>& arr) {
+    static_assert(ngrow > 0, "Can only apply Kreiss-Oliger stencil for ngrow >= 1");
+    constexpr int i_offset = (dir == stencil::dir::x) ? 1 : 0;
+    constexpr int j_offset = (dir == stencil::dir::y) ? 1 : 0;
+    constexpr int k_offset = (dir == stencil::dir::z) ? 1 : 0;
+
+    constexpr int r = ngrow;
+
+    amrex::Real result = -cexprmath::binom(2 * r, r) * arr(i, j, k, comp);
+#pragma unroll
+    for (int s = 1; s <= ngrow; ++s) {
+        result += -cexprmath::sign(s) * cexprmath::binom(2 * r, r + s) *
+                  (arr(i + s * i_offset, j + s * j_offset, k + s * k_offset) +
+                   arr(i - s * i_offset, j - s * j_offset, k - s * k_offset));
+    }
+    return result;
+}
 }; // namespace stencil
