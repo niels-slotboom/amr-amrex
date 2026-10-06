@@ -75,7 +75,7 @@ void waveEqn() {
 }
 
 void nonLinWaveEqn() {
-    using RHS = NLGradDampWaveEqnRHS;
+    using RHS = NLGradDampWaveEqnRHS<1>;
     using Init = FunctionInit<RHS::ncomp>;
 
     amrex::AllPrint() << "Setting up simulation..." << std::endl;
@@ -113,7 +113,7 @@ void nonLinWaveEqn() {
 }
 
 void heatEqn() {
-    using RHS = HeatEqnRHS;
+    using RHS = HeatEqnRHS<1>;
     using Init = FunctionInit<RHS::ncomp>;
 
     amrex::AllPrint() << "Setting up simulation..." << std::endl;

@@ -2,11 +2,12 @@
 #include "AMReX.H"
 #include "AMReX_RealVect.H"
 #include "int/Integrator.hpp"
+#include "util/stencil.hpp"
 
 // ϕ_tt = Δϕ - γ|∇ϕ|²ϕ_t
-struct NLGradDampWaveEqnRHS {
+template <int ngrow_> struct NLGradDampWaveEqnRHS {
     static constexpr int ncomp = 2;
-    static constexpr int ngrow = 1;
+    static constexpr int ngrow = ngrow_;
 
     static inline const amrex::Vector<std::string> comp_names = {"phi", "dphi_dt"};
 
@@ -28,18 +29,9 @@ struct NLGradDampWaveEqnRHS {
             return arr(i, j, k, Component::dphi_dt);
 
         case Component::dphi_dt: {
-            amrex::Real lap_stencil = -6.0 * arr(i, j, k, Component::phi);
-            lap_stencil += arr(i + 1, j, k, Component::phi) + arr(i - 1, j, k, Component::phi);
-            lap_stencil += arr(i, j + 1, k, Component::phi) + arr(i, j - 1, k, Component::phi);
-            lap_stencil += arr(i, j, k + 1, Component::phi) + arr(i, j, k - 1, Component::phi);
-
-            amrex::Real dphi_dx_stencil = arr(i + 1, j, k, Component::phi) - arr(i - 1, j, k, Component::phi);
-            amrex::Real dphi_dy_stencil = arr(i, j + 1, k, Component::phi) - arr(i, j - 1, k, Component::phi);
-            amrex::Real dphi_dz_stencil = arr(i, j, k + 1, Component::phi) - arr(i, j, k - 1, Component::phi);
-            amrex::Real grad_sq = inv_dx_sq_4 * (dphi_dx_stencil * dphi_dx_stencil + dphi_dy_stencil * dphi_dy_stencil +
-                                                 dphi_dz_stencil * dphi_dz_stencil);
-
-            return inv_dx_sq * lap_stencil - gamma * grad_sq * arr(i, j, k, Component::dphi_dt);
+            using namespace stencil;
+            return inv_dx_sq * laplacian<ngrow>(i, j, k, Component::phi, arr) -
+                   gamma * gradient_squared<ngrow>(i, j, k, Component::phi, arr) * arr(i, j, k, Component::dphi_dt);
         }
 
         default:
@@ -48,4 +40,4 @@ struct NLGradDampWaveEqnRHS {
     }
 };
 
-static_assert(RHSConcept<NLGradDampWaveEqnRHS>);
+static_assert(RHSConcept<NLGradDampWaveEqnRHS<1>>);
