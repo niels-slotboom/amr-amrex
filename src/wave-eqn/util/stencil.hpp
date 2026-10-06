@@ -3,6 +3,8 @@
 #include <AMReX_Array.H>
 #include <AMReX_Array4.H>
 
+#include <utility>
+
 /**
  * Defines compile-time resolved derivative stencils (up to third derivatives, arbitrary stencil width).
  * Note: It is assumed that dx = dy = dz, and multiplication of results by 1/dx^k with k the derivative order is UP TO
@@ -33,7 +35,7 @@ AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE constexpr std::int64_t binom(int n, int
 
     std::int64_t res = 1;
     for (int i = 1; i <= k; ++i) {
-        res = res * (n - i + 1) / i;
+        res = (res * (n - i + 1)) / i;
     }
     return res;
 }
@@ -111,9 +113,10 @@ template <int ngrow> AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE constexpr amrex::R
     if (offset == 0)
         return 0;
 
-    std::int64_t num = 3 * sign(k_abs + 1) * power(factorial(n), 2);
+    // TODO check 3? shoudl be 3! maybe???
+    std::int64_t num = 6 * sign(k_abs + 1) * power(factorial(n), 2);
     std::int64_t denom = power(k_abs, 3) * factorial(n - k_abs) * factorial(n + k_abs);
-    double w = ((1.0 - 2.0 * static_cast<double>(k_abs * k_abs) * generalised_harmonic_number(n, 2)) *
+    double w = ((1.0 - static_cast<double>(k_abs * k_abs) * generalised_harmonic_number(n, 2)) *
                 static_cast<double>(num) / static_cast<double>(denom));
     return static_cast<amrex::Real>((k > 0) ? w : -w);
 }
@@ -216,9 +219,9 @@ template <int ngrow, int dir0, int dir1, int dir2> struct derivative_impl<ngrow,
 #pragma unroll
             for (int s = 1; s <= ngrow; ++s) {
                 result += weights::first<ngrow>(s) *
-                          (deritative<ngrow, udirs.second, udirs.second>(i + s * i_offset, j + s * j_offset,
+                          (derivative<ngrow, udirs.second, udirs.second>(i + s * i_offset, j + s * j_offset,
                                                                          k + s * k_offset, comp, arr) -
-                           deritative<ngrow, udirs.second, udirs.second>(i - s * i_offset, j - s * j_offset,
+                           derivative<ngrow, udirs.second, udirs.second>(i - s * i_offset, j - s * j_offset,
                                                                          k - s * k_offset, comp, arr));
             }
             return result;
@@ -235,6 +238,7 @@ template <int ngrow, int dir0, int dir1, int dir2> struct derivative_impl<ngrow,
                     (derivative<ngrow, dir1, dir2>(i + s * i_offset, j + s * j_offset, k + s * k_offset, comp, arr) -
                      derivative<ngrow, dir1, dir2>(i - s * i_offset, j - s * j_offset, k - s * k_offset, comp, arr));
             }
+            return result;
         }
     }
 };
@@ -309,8 +313,8 @@ AMREX_FORCE_INLINE AMREX_GPU_HOST_DEVICE amrex::Real kreiss_oliger(int i, int j,
 #pragma unroll
     for (int s = 1; s <= ngrow; ++s) {
         result += -cexprmath::sign(s) * cexprmath::binom(2 * r, r + s) *
-                  (arr(i + s * i_offset, j + s * j_offset, k + s * k_offset) +
-                   arr(i - s * i_offset, j - s * j_offset, k - s * k_offset));
+                  (arr(i + s * i_offset, j + s * j_offset, k + s * k_offset, comp) +
+                   arr(i - s * i_offset, j - s * j_offset, k - s * k_offset, comp));
     }
     return result;
 }
