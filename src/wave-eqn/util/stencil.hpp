@@ -3,6 +3,7 @@
 #include <AMReX_Array.H>
 #include <AMReX_Array4.H>
 
+#include <cstdint>
 #include <utility>
 
 /**
@@ -113,7 +114,6 @@ template <int ngrow> AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE constexpr amrex::R
     if (offset == 0)
         return 0;
 
-    // TODO check 3? shoudl be 3! maybe???
     std::int64_t num = 6 * sign(k_abs + 1) * power(factorial(n), 2);
     std::int64_t denom = power(k_abs, 3) * factorial(n - k_abs) * factorial(n + k_abs);
     double w = ((1.0 - static_cast<double>(k_abs * k_abs) * generalised_harmonic_number(n, 2)) *
@@ -308,6 +308,7 @@ AMREX_FORCE_INLINE AMREX_GPU_HOST_DEVICE amrex::Real kreiss_oliger(int i, int j,
     constexpr int k_offset = (dir == stencil::dir::z) ? 1 : 0;
 
     constexpr int r = ngrow;
+    constexpr double norm = static_cast<double>(cexprmath::power(2, 2 * ngrow));
 
     amrex::Real result = -cexprmath::binom(2 * r, r) * arr(i, j, k, comp);
 #pragma unroll
@@ -316,6 +317,6 @@ AMREX_FORCE_INLINE AMREX_GPU_HOST_DEVICE amrex::Real kreiss_oliger(int i, int j,
                   (arr(i + s * i_offset, j + s * j_offset, k + s * k_offset, comp) +
                    arr(i - s * i_offset, j - s * j_offset, k - s * k_offset, comp));
     }
-    return result;
+    return result * norm;
 }
 }; // namespace stencil
