@@ -251,6 +251,14 @@ AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE amrex::Real derivative(int i, int j, in
     return derivative_impl<ngrow, Dirs...>::eval(i, j, k, comp, arr);
 }
 
+template <int ngrow, int... Dirs>
+AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE amrex::Real derivative(amrex::IntVect idx, int comp,
+                                                                const amrex::Array4<const amrex::Real>& arr) {
+    static_assert(((Dirs >= 0 && Dirs <= 2) && ...),
+                  "All direction template parameters must be between 0 and 2 (inclusive)");
+    return derivative_impl<ngrow, Dirs...>::eval(idx[0], idx[1], idx[2], comp, arr);
+}
+
 // --- --- --- SPECIAL OPERATORS DERIVED FROM BASIC DERIVATIVE --- --- ---
 
 // --- GRADIENT ---
