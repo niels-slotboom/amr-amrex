@@ -2,6 +2,7 @@
 #include "AMReX_CoordSys.H"
 #include "AMReX_IntVect.H"
 #include "AMReX_Print.H"
+#include "bcs/ConstDirichletBCFunctor.hpp"
 #include "init/ConstInit.hpp"
 #include "init/FunctionInit.hpp"
 #include "int/EulerIntegrator.hpp"
@@ -37,15 +38,16 @@ template <typename T> std::string duration_since(T start) {
 }
 
 void waveEqn() {
-    using RHS = WaveEqnRHS<4>;
+    using RHS = WaveEqnRHS<1>;
     using Init = FunctionInit<RHS::ncomp>;
+    using BC = ConstDirichletBCFunctor<RHS::ncomp, RHS::ngrow>;
 
     amrex::AllPrint() << "Setting up simulation..." << std::endl;
 
     // set up domain
     amrex::Box box({0, 0, 0}, {256, 256, 256});
     amrex::RealBox rbox({-2.0, -2.0, -2.0}, {2.0, 2.0, 2.0});
-    int is_per[] = {1, 1, 1};
+    int is_per[] = {0, 0, 0};
     amrex::Geometry geom(box, &rbox, amrex::CoordSys::cartesian, is_per);
 
     amrex::Real dx = geom.CellSize(0);
@@ -53,14 +55,16 @@ void waveEqn() {
     RHS rhs(dx);
     Init init({"exp(-(x^2+y^2+z^2)/(0.4^2)) * cos(30.0*x)",
                "exp(-(x^2+y^2+z^2)/(0.4^2)) * ((2.0/0.4^2) * x * cos(30.0*x) + 30.0 * sin(30.0*x))"});
-    RK4Integrator<RHS, Init> integrator(geom, {128, 128, 128}, std::move(rhs), std::move(init));
+    BC bc{{0.0, 0.0}};
+
+    RK4Integrator<RHS, Init, BC> integrator(geom, {128, 128, 128}, std::move(rhs), std::move(init), std::move(bc));
 
     integrator.initialise();
 
     amrex::AllPrint() << "Initialisation done." << std::endl;
 
-    size_t steps = 400;
-    size_t export_interval = 5;
+    size_t steps = 1000;
+    size_t export_interval = 8;
     integrator.configureExporter("raw/test", export_interval);
 
     auto start = std::chrono::system_clock::now();

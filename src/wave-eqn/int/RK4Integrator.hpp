@@ -2,14 +2,17 @@
 #include "AMReX_MFIter.H"
 #include "Integrator.hpp"
 
-template <typename RHSFunctor, typename InitFunctor>
-    requires RHSConcept<RHSFunctor> && InitConcept<InitFunctor>
-class RK4Integrator : public Integrator<RHSFunctor, InitFunctor> {
-    using Base = Integrator<RHSFunctor, InitFunctor>;
+template <typename RHSFunctor, typename InitFunctor,
+          typename BCFunctor = NoOpBCFunctor<RHSFunctor::ncomp, RHSFunctor::ngrow>>
+    requires RHSConcept<RHSFunctor> && InitConcept<InitFunctor> && BCConcept<BCFunctor>
+class RK4Integrator : public Integrator<RHSFunctor, InitFunctor, BCFunctor> {
+    using Base = Integrator<RHSFunctor, InitFunctor, BCFunctor>;
 
   private: // import base class members to scope
     using Base::ba;
+    using Base::defaultBCRecs;
     using Base::dm;
+    using Base::FillPatch;
     using Base::geom;
     using Base::ncomp;
     using Base::ngrow;
@@ -27,9 +30,11 @@ class RK4Integrator : public Integrator<RHSFunctor, InitFunctor> {
 
   public: // public interface
     RK4Integrator() = delete;
-    RK4Integrator(amrex::Geometry geom_, const amrex::IntVect& block_size, RHSFunctor rhs_, InitFunctor init_)
-        : Base(std::move(geom_), block_size, std::move(rhs_), std::move(init_)), init(state_old), acc(state_new),
-          arg(ba, dm, ncomp, ngrow), arg_next(ba, dm, ncomp, ngrow) {}
+    RK4Integrator(amrex::Geometry geom_, const amrex::IntVect& block_size, RHSFunctor rhs_, InitFunctor init_,
+                  BCFunctor bc_funct_ = BCFunctor{}, amrex::Vector<amrex::BCRec> bc_recs_ = defaultBCRecs())
+        : Base(std::move(geom_), block_size, std::move(rhs_), std::move(init_), std::move(bc_funct_),
+               std::move(bc_recs_)),
+          init(state_old), acc(state_new), arg(ba, dm, ncomp, ngrow), arg_next(ba, dm, ncomp, ngrow) {}
 
     void computeNewState(amrex::Real delta_time) override {
         runStage<0>(delta_time);
@@ -49,7 +54,7 @@ class RK4Integrator : public Integrator<RHSFunctor, InitFunctor> {
 
         if constexpr (!is_first) { // finalise arg for rhs evaluation
             std::swap(arg_next, arg);
-            arg.FillBoundary(geom.periodicity());
+            FillPatch(arg, time_arg);
         }
 
         RHSFunctor rhs_ = rhs; // local copy for lambda capture

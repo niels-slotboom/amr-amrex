@@ -3,9 +3,10 @@
 #include "AMReX_MFIter.H"
 #include "int/Integrator.hpp"
 
-template <typename RHSFunctor, typename InitFunctor>
-    requires RHSConcept<RHSFunctor> && InitConcept<InitFunctor>
-class EulerIntegrator : public Integrator<RHSFunctor, InitFunctor> {
+template <typename RHSFunctor, typename InitFunctor,
+          typename BCFunctor = NoOpBCFunctor<RHSFunctor::ncomp, RHSFunctor::ngrow>>
+    requires RHSConcept<RHSFunctor> && InitConcept<InitFunctor> && BCConcept<BCFunctor>
+class EulerIntegrator : public Integrator<RHSFunctor, InitFunctor, BCFunctor> {
     using Base = Integrator<RHSFunctor, InitFunctor>;
 
     // bring member constants into class scope
