@@ -1,7 +1,7 @@
 #pragma once
 #include "int/Integrator.hpp"
 
-template <int ncomp_, int ngrow_> struct ConstDirichletBCFunctor {
+template <int ncomp_, int ngrow_> struct ConstDirichletBC {
     static constexpr int ncomp = ncomp_;
     static constexpr int ngrow = ngrow_;
 

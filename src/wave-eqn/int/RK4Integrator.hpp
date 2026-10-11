@@ -2,8 +2,7 @@
 #include "AMReX_MFIter.H"
 #include "Integrator.hpp"
 
-template <typename RHSFunctor, typename InitFunctor,
-          typename BCFunctor = NoOpBCFunctor<RHSFunctor::ncomp, RHSFunctor::ngrow>>
+template <typename RHSFunctor, typename InitFunctor, typename BCFunctor = NoOpBC<RHSFunctor::ncomp, RHSFunctor::ngrow>>
     requires RHSConcept<RHSFunctor> && InitConcept<InitFunctor> && BCConcept<BCFunctor>
 class RK4Integrator : public Integrator<RHSFunctor, InitFunctor, BCFunctor> {
     using Base = Integrator<RHSFunctor, InitFunctor, BCFunctor>;

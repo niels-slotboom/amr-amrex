@@ -3,8 +3,7 @@
 #include "AMReX_MFIter.H"
 #include "int/Integrator.hpp"
 
-template <typename RHSFunctor, typename InitFunctor,
-          typename BCFunctor = NoOpBCFunctor<RHSFunctor::ncomp, RHSFunctor::ngrow>>
+template <typename RHSFunctor, typename InitFunctor, typename BCFunctor = NoOpBC<RHSFunctor::ncomp, RHSFunctor::ngrow>>
     requires RHSConcept<RHSFunctor> && InitConcept<InitFunctor> && BCConcept<BCFunctor>
 class EulerIntegrator : public Integrator<RHSFunctor, InitFunctor, BCFunctor> {
     using Base = Integrator<RHSFunctor, InitFunctor>;

@@ -10,7 +10,7 @@
 
 #include <concepts>
 
-#include "bcs/NoOpBCFunctor.hpp"
+#include "bcs/NoOpBC.hpp"
 #include "util/PlotExporter.hpp"
 
 /**
@@ -70,8 +70,7 @@ concept BCConcept = std::is_trivially_copyable_v<T> &&
  * @tparam RHSFunctor Type representing the spatial RHS operator (must satisfy RHSConcept).
  * @tparam InitFunctor Type representing the initial condition provider (must satisfy InitConcept).
  */
-template <typename RHSFunctor, typename InitFunctor,
-          typename BCFunctor = NoOpBCFunctor<RHSFunctor::ncomp, RHSFunctor::ngrow>>
+template <typename RHSFunctor, typename InitFunctor, typename BCFunctor = NoOpBC<RHSFunctor::ncomp, RHSFunctor::ngrow>>
     requires RHSConcept<RHSFunctor> && InitConcept<InitFunctor> && BCConcept<BCFunctor>
 class Integrator {
   protected:
