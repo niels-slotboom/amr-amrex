@@ -39,7 +39,7 @@ template <typename T> std::string duration_since(T start) {
 void waveEqn() {
     using RHS = WaveEqnRHS<1>;
     using Init = FunctionInit<RHS::ncomp>;
-    using BC = SommerfeldBC;
+    using BC = RadialSommerfeldBC;
 
     amrex::AllPrint() << "Setting up simulation..." << std::endl;
 
