@@ -10,7 +10,7 @@
 
 // assumes dx = dy = dz
 // edge/corner cells of the halo are invalid, but unused by the WaveEqnRHS so dont matter
-struct SommerfeldBC {
+struct RadialSommerfeldBC {
     static constexpr int ncomp = 2;
     static constexpr int ngrow = 1;
 
