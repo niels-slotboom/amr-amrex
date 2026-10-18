@@ -64,8 +64,8 @@ void waveEqn() {
 
     amrex::AllPrint() << "Initialisation done." << std::endl;
 
-    size_t steps = 10000;
-    size_t export_interval = 50;
+    size_t steps = 1000;
+    size_t export_interval = 5;
     integrator.configureExporter("raw/test", export_interval);
 
     auto start = std::chrono::system_clock::now();

@@ -41,10 +41,17 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/AMReX-Codes/amrex.git
     GIT_TAG        development
 )
-
 FetchContent_MakeAvailable(amrex)
+
+FetchContent_Declare(
+    treesap
+    GIT_REPOSITORY https://github.com/niels-slotboom/treesap.git
+    GIT_TAG        main
+)
+FetchContent_MakeAvailable(treesap)
 
 find_package(Boxer REQUIRED)
 
 add_subdirectory(src/boxer-test)
 add_subdirectory(src/wave-eqn)
+add_subdirectory(src/non-linear)
