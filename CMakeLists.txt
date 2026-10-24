@@ -53,5 +53,5 @@ FetchContent_MakeAvailable(treesap)
 find_package(Boxer REQUIRED)
 
 add_subdirectory(src/boxer-test)
-add_subdirectory(src/wave-eqn)
+# add_subdirectory(src/wave-eqn)
 add_subdirectory(src/non-linear)
