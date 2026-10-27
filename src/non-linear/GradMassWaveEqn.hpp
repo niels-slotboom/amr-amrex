@@ -4,6 +4,7 @@
 #include "init/FunctionInit.hpp"
 #include "pde-model/PDEModel.hpp"
 #include "pde-model/PDEModelConcepts.hpp"
+#include "pde-model/rhs-decorators/KODecorator.hpp"
 #include "util/stencil.hpp"
 
 template <int ngrow_> struct GradMassRHS {
@@ -18,7 +19,7 @@ template <int ngrow_> struct GradMassRHS {
 
     AMREX_GPU_HOST_DEVICE AMREX_FORCE_INLINE amrex::Real operator()(int i, int j, int k, int comp, amrex::Real time,
                                                                     const amrex::Array4<const amrex::Real>& arr) const {
-        using namespace stencil;
+        using namespace treesap::stencil;
         switch (comp) {
         case Components::phi:
             return arr(i, j, k, Components::pi);
@@ -32,26 +33,32 @@ template <int ngrow_> struct GradMassRHS {
     }
 };
 
-static_assert(RHSConcept<GradMassRHS<1>>);
+static_assert(treesap::RHSConcept<GradMassRHS<1>>);
 
-auto get_model() {
-    constexpr int ngrow = 1;
+template <int ngrow> auto inline get_model(amrex::Real gamma) {
     using RHSType = GradMassRHS<ngrow>;
+    using DecoratedRHSType = treesap::KODecorator<RHSType>;
     constexpr int ncomp = RHSType::ncomp;
-    using InitType = FunctionInit<ncomp>;
-    using ModelType = PDEModel<RHSType, InitType>;
+    using InitType = treesap::FunctionInit<ncomp>;
+    using ModelType = treesap::PDEModel<DecoratedRHSType, InitType>;
 
-    amrex::Box box({0, 0, 0}, {256, 256, 256});
-    amrex::RealBox rbox({-2.0, -2.0, -2.0}, {2.0, 2.0, 2.0});
+    amrex::Box box({0, 0, 0}, {512, 512, 512});
+    amrex::RealBox rbox({-0.5, -0.5, -0.5}, {0.5, 0.5, 0.5});
     int is_per[] = {1, 1, 1};
     amrex::Geometry geom(box, &rbox, amrex::CoordSys::cartesian, is_per);
     amrex::Real dx = geom.CellSize(0);
 
-    amrex::Real gamma = 0.1;
     RHSType rhs{gamma, 1.0 / (dx * dx)};
     InitType init({"exp(-(x^2 + y^2 + z^2) / 0.1^2)", "0.0"});
+    // InitType init({"exp(-x^2 / 0.1^2)", "0.0"});
 
-    ModelType model({"phi", "pi"}, std::move(geom), std::move(rhs), std::move(init));
+    DecoratedRHSType rhs_dec{rhs, 1.0, 1.0 / dx};
+
+    amrex::AllPrint() << "gamma = " << rhs.gamma << std::endl;
+    amrex::AllPrint() << "dx_inv = " << rhs_dec.dx_inv << std::endl;
+    amrex::AllPrint() << "strength = " << rhs_dec.strength << std::endl;
+
+    ModelType model({"phi", "pi"}, std::move(geom), std::move(rhs_dec), std::move(init));
 
     return model;
 }
