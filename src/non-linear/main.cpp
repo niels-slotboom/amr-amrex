@@ -2,10 +2,12 @@
 #include "AMReX_Print.H"
 #include "GradMassWaveEqn.hpp"
 #include "integrators/RK4Integrator.hpp"
+#include "util/ScopedTimer.hpp"
 
 int main(int argc, char* argv[]) {
     amrex::Initialize(argc, argv);
     {
+        treesap::ScopedTimer::enabled = true;
         auto model = get_model<2>(10.0);
         treesap::RK4Integrator<decltype(model)> integrator(model, amrex::IntVect{128, 128, 128});
 
