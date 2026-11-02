@@ -37,7 +37,7 @@ static_assert(treesap::RHSConcept<GradMassRHS<1>>);
 
 template <int ngrow> auto inline get_model(amrex::Real gamma) {
     using RHSType = GradMassRHS<ngrow>;
-    using DecoratedRHSType = treesap::KODecorator<RHSType>;
+    using DecoratedRHSType = treesap::KODecorator<RHSType, false>;
     constexpr int ncomp = RHSType::ncomp;
     using InitType = treesap::FunctionInit<ncomp>;
     using ModelType = treesap::PDEModel<DecoratedRHSType, InitType>;
@@ -52,7 +52,7 @@ template <int ngrow> auto inline get_model(amrex::Real gamma) {
     InitType init({"exp(-(x^2 + y^2 + z^2) / 0.1^2)", "0.0"});
     // InitType init({"exp(-x^2 / 0.1^2)", "0.0"});
 
-    DecoratedRHSType rhs_dec{rhs, 1.0, 1.0 / dx};
+    DecoratedRHSType rhs_dec{rhs, .1, 1.0 / dx};
 
     amrex::AllPrint() << "gamma = " << rhs.gamma << std::endl;
     amrex::AllPrint() << "dx_inv = " << rhs_dec.dx_inv << std::endl;

@@ -11,19 +11,21 @@ int main(int argc, char* argv[]) {
         auto model = get_model<2>(10.0);
         treesap::RK4Integrator<decltype(model)> integrator(model, amrex::IntVect{128, 128, 128});
 
-        size_t max_steps = 100000;
+        size_t max_steps = 1700;
         size_t export_interval = 100;
 
         integrator.configureExporter("raw/nl_test", export_interval);
 
         amrex::Real dx = model.get_geometry().CellSize(0);
-        amrex::Real dt = 0.0035 * dx;
+        amrex::Real dt = 0.035 * dx;
 
         integrator.initialise();
         for (size_t step = 0; step <= max_steps; ++step) {
             amrex::AllPrint() << "Step " << step << std::endl;
             integrator.step(dt);
         }
+
+        treesap::ScopedTimer::printOverview();
     }
     amrex::Finalize();
 }
